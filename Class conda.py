@@ -8,7 +8,7 @@ import numpy as np
 
 from julia import Main
 
-class YAMLUpdater:
+class OPENBF_Jacobean:
     def __init__(self, base_file, output_file, openBF_dir):
         self.base_file = base_file
         self.output_file = output_file
@@ -56,7 +56,7 @@ class YAMLUpdater:
 
         # Creates folder for saving plots
         base_dir = os.path.join(openBF_dir, "openBF_base") # Onde estarão os arquivos de saída do base_file
-        updated_dir = os.path.join(openBF_dir, "openBF_updated") # Onde estarão os arquivos de saída do output_file
+        updated_dir = os.path.join(openBF_dir, f"openBF_updated_{vaso}_{parametro}={novo_valor}") # Onde estarão os arquivos de saída do output_file
         os.makedirs(base_dir, exist_ok=True)
         os.makedirs(updated_dir, exist_ok=True)
 
@@ -153,18 +153,18 @@ class YAMLUpdater:
                 return None
 
             # Obtém os valores de L nos arquivos YAML
-            L_base = load_param_value(base_file, vaso, parametro)
-            L_updated = load_param_value(updated_file, vaso, parametro)
+            value_base = load_param_value(base_file, vaso, parametro)
+            value_updated = load_param_value(updated_file, vaso, parametro)
 
-            if L_base is None or L_updated is None:
+            if value_base is None or value_updated is None:
                 print("❌ Não foi possível obter os valores do parâmetro. Abortando cálculo.")
                 return
 
             # Calcula a diferença do parâmetro
-            delta_L = L_updated - L_base
-            print(f"📏 Diferença do parâmetro '{parametro}': {L_updated} - {L_base} = {delta_L}")
+            delta_value = value_updated - value_base
+            print(f"📏 Diferença do parâmetro '{parametro}': {value_updated} - {value_base} = {delta_value}")
 
-            if delta_L == 0:
+            if delta_value == 0:
                 print("⚠️ Diferença do parâmetro é zero! Evitando divisão por zero.")
                 return
 
@@ -174,7 +174,7 @@ class YAMLUpdater:
             for vessel in vessels:
                 base_file_path = os.path.join(base_dir, f"{vessel}_stacked.last")
                 updated_file_path = os.path.join(updated_dir, f"{vessel}_stacked.last")
-                del_file_path = os.path.join(del_dir, f"{vessel}_del.last")
+                del_file_path = os.path.join(del_dir, f"{vessel}_del_{parametro}_delta={delta_value}.last")
 
                 # Verifica se ambos os arquivos existem
                 if not os.path.exists(base_file_path) or not os.path.exists(updated_file_path):
@@ -191,14 +191,14 @@ class YAMLUpdater:
                     continue
 
                 # Realiza a subtração e divisão pelo delta_L
-                del_data = (updated_data - base_data) / delta_L
+                del_data = (updated_data - base_data) / delta_value
 
                 # Salva o resultado
                 np.savetxt(del_file_path, del_data, fmt="%.6e")
                 print(f"✅ Arquivo de diferença normalizada salvo: {del_file_path}")
 
         # Caminho para o diretório de diferenças
-        del_dir = os.path.join(openBF_dir, "partial_deriv")
+        del_dir = os.path.join(openBF_dir, f"partial_deriv_{parametro}")
 
         # Chama a função com o parâmetro 'L'
         partial_deriv_files(base_dir, updated_dir, del_dir, base_file, output_file, vaso, parametro)
@@ -267,11 +267,11 @@ class YAMLUpdater:
 # Exemplo de uso
 if __name__ == "__main__":
 
-    base_file = "C:/Users/User/OneDrive/Documentos/BIBI/Mestrado EBM/Simulação openBF/problema_inverso_Automatizado.yaml"
+    base_file = "C:/Users/User/Documents/problema_inverso_results_openbf/problema_inverso_Automatizado.yaml"
     output_file = "C:/Users/User/Documents/problema_inverso_results_openbf/resultado.yaml"
     openBF_dir = "C:/Users/User/Documents/problema_inverso_results_openbf"
 
-    updater = YAMLUpdater(base_file, output_file, openBF_dir)
+    updater = OPENBF_Jacobean(base_file, output_file, openBF_dir)
 
-    # Exemplo: Atualizar o vaso "vaso1" no parâmetro "L" para um novo valor 0.1
-    updater.update_yaml("vaso1", "L", 0.04)
+    # Exemplo: Atualizar o vaso X no parâmetro Y para um novo valor Z
+    updater.update_yaml("vaso1", "R0", 0.026)
