@@ -9,55 +9,59 @@ import numpy as np
 from julia import Main
 
 class OPENBF_Jacobean:
-    def __init__(self, base_file, output_file, openBF_dir):
+    def __init__(self, base_file, updated_file, openBF_dir):
         self.base_file = base_file
-        self.output_file = output_file
+        self.updated_file = updated_file
         self.openBF_dir = openBF_dir
 
     def load_yaml(self):
-        """Carrega o YAML do base_file"""
+        """Loads YAML from base_file"""
         with open(self.base_file, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
 
     def save_yaml(self, data):
-        """Salva o YAML atualizado no output_file"""
-        with open(self.output_file, "w", encoding="utf-8") as f:
+        """Saves the updated YAML to the updated_file"""
+        with open(self.updated_file, "w", encoding="utf-8") as f:
             yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
-        print(f"✅ Arquivo atualizado salvo em: {self.output_file}")
+        print(f"Updated file saved in: {self.updated_file}")
 
-    def update_yaml(self, vaso, parametro, novo_valor):
-        """Atualiza o valor de um parâmetro dentro do vaso especificado"""
+    def update_yaml(self, vase, parameter, new_value):
+        """Updates the value of a parameter within a specific vessel;
+        runs openBF in Julia for both the base YAML and the updated YAML;
+        stacks the output values, calculates the partial derivatives with respect to the modified parameter;
+        and plots the graphs (Pressure/Area/Flow/Velocity vs. Time)."""
+
         yaml_data = self.load_yaml()
 
-        # Depuração: mostrar estrutura antes da modificação
-        print("🔍 Estrutura YAML carregada:", yaml_data)
-
         if "network" not in yaml_data:
-            print("❌ A chave 'network' não foi encontrada no YAML.")
+            print("The 'network' key was not found in the YAML.")
             return
 
-        encontrado = False  # Flag para saber se encontrou o vaso
+        found = False  # Flag to know if the vase was found
 
         for item in yaml_data["network"]:
-            print(f"🔍 Verificando vaso: {item.get('label')}")  # Debug print
-            if item.get("label") == vaso:
-                if parametro in item:
-                    item[parametro] = novo_valor
-                    print(f"✅ Parâmetro '{parametro}' do vaso '{vaso}' atualizado para: {novo_valor}")
-                    encontrado = True
+            print(f" Checking vessel: {item.get('label')}")  # Debug print
+            if item.get("label") == vase:
+                if parameter in item:
+                    item[parameter] = new_value
+                    print(f"Parameter '{parameter}' of vessel '{vase}' updated to: {new_value}")
+                    found = True
                 else:
-                    print(f"⚠️ Parâmetro '{parametro}' não encontrado no vaso '{vaso}'.")
+                    print(f"Parameter '{parameter}' not found in vessel '{vase}'.")
                 break
 
-        if not encontrado:
-            print(f"❌ Vaso '{vaso}' não encontrado no YAML.")
+        if not found:
+            print(f"Vessel '{vase}' not found in YAML.")
 
         self.save_yaml(yaml_data)
 
         # Creates folder for saving plots
-        base_dir = os.path.join(openBF_dir, "openBF_base") # Onde estarão os arquivos de saída do base_file
-        updated_dir = os.path.join(openBF_dir, f"openBF_updated_{vaso}_{parametro}={novo_valor}") # Onde estarão os arquivos de saída do output_file
+        # Where the base_file output files will be
+        base_dir = os.path.join(openBF_dir, "openBF_base")
         os.makedirs(base_dir, exist_ok=True)
+
+        # Where the updated_file output files will be
+        updated_dir = os.path.join(openBF_dir, f"openBF_updated_{vase}_{parameter}={new_value}")
         os.makedirs(updated_dir, exist_ok=True)
 
         # Initializes the Julia environment
@@ -73,7 +77,7 @@ class OPENBF_Jacobean:
             end
         """)
 
-        # Runs hemodynamic simulation for base file
+        # Runs hemodynamic simulation for base_file
         Main.eval(""" 
                     using openBF
                     function pyopenBF(base_file, base_dir)
@@ -85,127 +89,126 @@ class OPENBF_Jacobean:
         # Calls Julia function from Python
         Main.pyopenBF(base_file, base_dir)
 
-        # Runs hemodynamic simulation for output file
+        # Runs hemodynamic simulation for updated_file
         Main.eval(""" 
             using openBF
-            function pyopenBF(output_file, updated_dir)
-                run_simulation(output_file, verbose=true, save_stats=true, savedir=updated_dir)
+            function pyopenBF(updated_file, updated_dir)
+                run_simulation(updated_file, verbose=true, save_stats=true, savedir=updated_dir)
                 println("openBF output saved in: $updated_dir")
             end
         """)
 
         # Calls Julia function from Python
-        Main.pyopenBF(output_file, updated_dir)
+        Main.pyopenBF(updated_file, updated_dir)
 
-        #def jacobian()
-        # Vasos e variáveis na ordem correta
-        vessels = ["vaso1", "vaso2", "vaso3"]
-        variables = ["A", "P", "Q", "u"]  # Ordem correta
+        # Stacking order of vessels and variables
+        vessels = ["vase1", "vase2", "vase3"]
+        variables = ["A", "P", "Q", "u"]
 
-        # Função para empilhar os dados corretamente
         def stack_last_files(vessel, variables, data_dir):
+            """Stacks the openBF output for each vessel in the order "A", "P", "Q" and "u" from top to bottom
+            and saves it to a .last file"""
             data_list = []
 
             for var in variables:
                 file_path = os.path.join(data_dir, f"{vessel}_{var}.last")
 
-                # Verifica se o arquivo existe
+                # Checks if file exists
                 if not os.path.exists(file_path):
-                    print(f"Aviso: Arquivo {file_path} não encontrado.")
+                    print(f"Warning: File {file_path} not found.")
                     return
 
-                # Lê os dados garantindo que a estrutura não seja alterada
-                data = np.loadtxt(file_path)  # Lê o arquivo mantendo os valores originais
+                # Reads data from the .last file
+                data = np.loadtxt(file_path)
                 data_list.append(data)
 
-            # Empilha verticalmente os arquivos (A, P, Q, u)
+            # Stacks files vertically (A, P, Q, u)
             stacked_data = np.vstack(data_list)
 
-            # Salva o arquivo empilhado
-            output_file = os.path.join(data_dir, f"{vessel}_stacked.last")
-            np.savetxt(output_file, stacked_data, fmt="%.6e")  # Mantém formato numérico original
+            # Saves the stacked file
+            updated_file = os.path.join(data_dir, f"{vessel}_stacked.last")
+            np.savetxt(updated_file, stacked_data, fmt="%.6e") # 6 decimal places
 
-            print(f"Arquivo salvo: {output_file}")
+            print(f"Saved file: {updated_file}")
 
-        # Processa cada vaso individualmente
+        # Processes each vessel individually
         for vessel in vessels:
             stack_last_files(vessel, variables, base_dir)
             stack_last_files(vessel, variables, updated_dir)
 
-        def partial_deriv_files(base_dir, updated_dir, del_dir, base_file, updated_file, vaso, parametro):
+        def partial_deriv_files(base_dir, updated_dir, del_dir, base_file, updated_file, vase, parameter):
             """
-            Subtrai os arquivos empilhados do base_dir dos arquivos empilhados do updated_dir,
-            divide pela diferença do parâmetro atualizado e salva o resultado no del_dir.
+            Subtracts the stacked files of base_dir from the stacked files of updated_dir,
+            divides by the delta parameter and saves the result in del_dir.
             """
-            vessels = ["vaso1", "vaso2", "vaso3"]
+            vessels = ["vase1", "vase2", "vase3"]
 
-            # Carrega os valores do parâmetro L dos arquivos YAML
-            def load_param_value(yaml_file, vaso, parametro):
-                """Carrega o valor do parâmetro especificado para um determinado vaso."""
+            def load_param_value(yaml_file, vase, parameter):
+                """Loads the specified parameter value of a specified vessel."""
                 with open(yaml_file, "r", encoding="utf-8") as f:
                     yaml_data = yaml.safe_load(f) or {}
 
                 for item in yaml_data.get("network", []):
-                    if item.get("label") == vaso:
-                        return item.get(parametro)
+                    if item.get("label") == vase:
+                        return item.get(parameter)
 
-                print(f"⚠️ Parâmetro '{parametro}' não encontrado para o vaso '{vaso}'.")
+                print(f"Parameter '{parameter}' not found for vessel '{vase}'.")
                 return None
 
-            # Obtém os valores de L nos arquivos YAML
-            value_base = load_param_value(base_file, vaso, parametro)
-            value_updated = load_param_value(updated_file, vaso, parametro)
+            # Gets the parameter values in YAML files
+            value_base = load_param_value(base_file, vase, parameter)
+            value_updated = load_param_value(updated_file, vase, parameter)
 
             if value_base is None or value_updated is None:
-                print("❌ Não foi possível obter os valores do parâmetro. Abortando cálculo.")
+                print("Could not get parameter values. Aborting calculation.")
                 return
 
-            # Calcula a diferença do parâmetro
+            # Calculates the parameter difference
             delta_value = value_updated - value_base
-            print(f"📏 Diferença do parâmetro '{parametro}': {value_updated} - {value_base} = {delta_value}")
+            print(f"Parameter '{parameter}' difference: {value_updated} - {value_base} = {delta_value}")
 
             if delta_value == 0:
-                print("⚠️ Diferença do parâmetro é zero! Evitando divisão por zero.")
+                print("Parameter difference is zero. Avoiding division by zero.")
                 return
 
-            # Cria o diretório de saída se não existir
+            # Creates the output directory if it does not exist
             os.makedirs(del_dir, exist_ok=True)
 
             for vessel in vessels:
                 base_file_path = os.path.join(base_dir, f"{vessel}_stacked.last")
                 updated_file_path = os.path.join(updated_dir, f"{vessel}_stacked.last")
-                del_file_path = os.path.join(del_dir, f"{vessel}_del_{parametro}_delta={delta_value}.last")
+                del_file_path = os.path.join(del_dir, f"{vessel}_del_{parameter}_delta={delta_value}.last")
 
-                # Verifica se ambos os arquivos existem
+                # Checks if both files exist
                 if not os.path.exists(base_file_path) or not os.path.exists(updated_file_path):
-                    print(f"❌ Arquivos para {vessel} não encontrados! Pulando...")
+                    print(f"Files for {vessel} not found. Skipped.")
                     continue
 
-                # Carrega os arquivos .last
+                # Loads the files .last
                 base_data = np.loadtxt(base_file_path)
                 updated_data = np.loadtxt(updated_file_path)
 
-                # Verifica se as dimensões são compatíveis
+                # Checks if the dimensions are compatible
                 if base_data.shape != updated_data.shape:
-                    print(f"⚠️ Dimensões incompatíveis para {vessel}: {base_data.shape} vs {updated_data.shape}")
+                    print(f"Incompatible dimensions for {vessel}: {base_data.shape} vs {updated_data.shape}")
                     continue
 
-                # Realiza a subtração e divisão pelo delta_L
+                # Performs subtraction and division by delta_value
                 del_data = (updated_data - base_data) / delta_value
 
-                # Salva o resultado
+                # Saves the result
                 np.savetxt(del_file_path, del_data, fmt="%.6e")
-                print(f"✅ Arquivo de diferença normalizada salvo: {del_file_path}")
+                print(f"Partial derivatives file saved: {del_file_path}")
 
-        # Caminho para o diretório de diferenças
-        del_dir = os.path.join(openBF_dir, f"partial_deriv_{parametro}")
+        # Path to the partial derivatives directory
+        del_dir = os.path.join(openBF_dir, f"partial_deriv_{parameter}")
 
-        # Chama a função com o parâmetro 'L'
-        partial_deriv_files(base_dir, updated_dir, del_dir, base_file, output_file, vaso, parametro)
+        # Calls the function
+        partial_deriv_files(base_dir, updated_dir, del_dir, base_file, updated_file, vase, parameter)
 
         # Plots the simulation output graphs and saves them
         def plot_openBF(data_dir):
-            vessels = ["vaso1", "vaso2", "vaso3"]
+            vessels = ["vase1", "vase2", "vase3"]
             variables = ["P", "Q", "A", "u"]
             titles = ["Vase 1", "Vase 2", "Vase 3"]
 
@@ -221,10 +224,10 @@ class OPENBF_Jacobean:
                     data[var].append(df)
 
                     # data = {
-                    #   "P": [df_vaso1_P, df_vaso2_P, df_vaso3_P],
-                    #   "Q": [df_vaso1_Q, df_vaso2_Q, df_vaso3_Q],
-                    #   "A": [df_vaso1_A, df_vaso2_A, df_vaso3_A],
-                    #   "u": [df_vaso1_u, df_vaso2_u, df_vaso3_u]
+                    #   "P": [df_vase1_P, df_vase2_P, df_vase3_P],
+                    #   "Q": [df_vase1_Q, df_vase2_Q, df_vase3_Q],
+                    #   "A": [df_vase1_A, df_vase2_A, df_vase3_A],
+                    #   "u": [df_vase1_u, df_vase2_u, df_vase3_u]
                     # }
 
             # Creates folder for saving plots
@@ -264,14 +267,14 @@ class OPENBF_Jacobean:
         plot_openBF(updated_dir)
 
 
-# Exemplo de uso
+# Application
 if __name__ == "__main__":
 
     base_file = "C:/Users/User/Documents/problema_inverso_results_openbf/problema_inverso_Automatizado.yaml"
-    output_file = "C:/Users/User/Documents/problema_inverso_results_openbf/resultado.yaml"
+    updated_file = "C:/Users/User/Documents/problema_inverso_results_openbf/resultado.yaml"
     openBF_dir = "C:/Users/User/Documents/problema_inverso_results_openbf"
 
-    updater = OPENBF_Jacobean(base_file, output_file, openBF_dir)
+    updater = OPENBF_Jacobean(base_file, updated_file, openBF_dir)
 
-    # Exemplo: Atualizar o vaso X no parâmetro Y para um novo valor Z
-    updater.update_yaml("vaso1", "R0", 0.026)
+    # Update vessel X in parameter Y to a new value Z
+    updater.update_yaml("vase1", "R0", 0.026)
