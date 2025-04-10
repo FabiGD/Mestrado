@@ -8,7 +8,7 @@ import numpy as np
 
 from julia import Main
 
-class OPENBF_Jacobean:
+class OPENBF_Jacobian:
     """
             Creates the Jacobian matrix for a parameter variation of a vessel.
 
@@ -50,7 +50,6 @@ class OPENBF_Jacobean:
             if item.get("label") == vase:
                 if parameter in item:
                     item[parameter] = item[parameter] + add_value
-                    self.new_value = item[parameter]
                     print(f"Parameter '{parameter}' of vessel '{vase}' updated to: {item[parameter]}")
                     found = True
                 else:
@@ -133,7 +132,7 @@ class OPENBF_Jacobean:
         print(f"Parameter '{parameter}' difference: {delta_value}")
 
         if delta_value == 0:
-            print("Error: Parameter difference is zero. Avoiding division by zero.")
+            print("Warning: Parameter difference is zero. Avoiding division by zero.")
             return
 
         # Creates the output directory if it does not exist
@@ -155,7 +154,7 @@ class OPENBF_Jacobean:
 
             # Checks if the dimensions are compatible
             if base_data.shape != updated_data.shape:
-                print(f"Error: Incompatible dimensions for {vessel}: {base_data.shape} vs {updated_data.shape}")
+                print(f"Error: Incompatible dimensions for {vessel}: {base_data.shape} vs {updated_data.shape}.")
                 continue
 
             # Performs subtraction and division by delta_value
@@ -236,21 +235,31 @@ class OPENBF_Jacobean:
         parameters = ["E", "h0", "L", "R0"]
         vessels = ["vase1", "vase2", "vase3"]
 
+        # Filtra os parâmetros com delta != 0
+        valid_parameters = []
+        for param in parameters:
+            if delta_dict[param] != 0:
+                valid_parameters.append(param)
+            else:
+                print(
+                    f"Warning: Variation of the parameter '{param}' is zero. It will be excluded from the Jacobian matrix.")
+
         if not os.path.exists(output_path):
             os.makedirs(output_path)
 
         for vessel in vessels:
             matrices = []
 
-            for param in parameters:
+            for param in valid_parameters:
                 delta = delta_dict[param]
-                file_path = os.path.join(openBF_dir, f"partial_deriv_{param}", f"{vessel}_del_{param}_delta={delta}.last")
+                file_path = os.path.join(openBF_dir, f"partial_deriv_{param}",
+                                         f"{vessel}_del_{param}_delta={delta}.last")
 
                 if os.path.exists(file_path):
                     matrix = np.loadtxt(file_path)
                     matrices.append(matrix)
                 else:
-                    print(f"Error: File not found - {file_path}")
+                    print(f"Error: File not found - {file_path}.")
                     return
 
             if matrices:
@@ -274,7 +283,8 @@ class OPENBF_Jacobean:
                     print("Error: Non-invertible matrix.")
                     return
 
-                J0T_J0_inv = np.linalg.inv(J0T_J0) # Calculates the inverse matrix
+                # Calculates the pseudoinverse matrix
+                J0T_J0_inv = np.linalg.inv(J0T_J0)
                 pseudoinv = J0T_J0_inv @ J0.T
 
                 output_dir = os.path.join(openBF_dir, "jacobians_pseudoinverse")
@@ -285,7 +295,7 @@ class OPENBF_Jacobean:
                 print(f"Pseudoinverse matrix saved in: {output_file}")
 
             else:
-                print(f"Error: File not found - {file_path}")
+                print(f"Error: File not found - {file_path}.")
                 return
 
     def base_openBF(self):
@@ -324,7 +334,7 @@ class OPENBF_Jacobean:
         # Where the base_file output files are
         base_dir = os.path.join(openBF_dir, "openBF_base")
         # Where the updated_file output files will be
-        updated_dir = os.path.join(openBF_dir, f"openBF_updated_{vase}_{parameter}={self.new_value}")
+        updated_dir = os.path.join(openBF_dir, f"openBF_updated_{vase}_{parameter}")
         os.makedirs(updated_dir, exist_ok=True)
 
         # Runs openBF to updated_file
@@ -347,7 +357,8 @@ class OPENBF_Jacobean:
         # Plots the simulation output graphs and saves them
         self.plot_openBF(updated_dir)
 
-    def jacobian_matrix(self, vase, add_E, add_h0, add_L, add_R0):
+    def jacobian_pseudoinv_matrix(self, vase, add_E, add_h0, add_L, add_R0):
+        """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter."""
         add_values = {"E": add_E, "h0": add_h0, "L": add_L, "R0": add_R0}
 
         for parameter in add_values:
@@ -357,22 +368,78 @@ class OPENBF_Jacobean:
         output_path = os.path.join(openBF_dir, f"jacobians")
         self.stack_partial_derivatives(add_values, output_path)
 
+        # Creates the pseudoinverse matrix
+        self.pseudoinverse_matrix()
+
+    def optimized_parameters(self, vase, add_E, add_h0, add_L, add_R0):
+        """ Calculates the optimized parameters by multiplying the pseudoinverse Jacobian with the stacked output matrix
+        for each vessel where the variation is non-zero.
+        Saves the results in the folder 'optimized_parameters'."""
+
+        vessels = ["vase1", "vase2", "vase3"]
+        parameters = ["E", "h0", "L", "R0"]
+        add_values = {"E": add_E, "h0": add_h0, "L": add_L, "R0": add_R0}
+
+        output_dir = os.path.join(self.openBF_dir, "optimized_parameters")
+        os.makedirs(output_dir, exist_ok=True)
+
+        for vessel in vessels:
+            # Verifica se existe pelo menos um parâmetro modificado
+            has_nonzero_param = any(add_values[param] != 0 for param in parameters)
+            if not has_nonzero_param:
+                print(f"Skipping {vessel} (no parameter variation).")
+                continue
+
+            pseudo_path = os.path.join(self.openBF_dir, "jacobians_pseudoinverse", f"pseudo_inv_{vessel}.txt")
+            if not os.path.exists(pseudo_path):
+                print(f"Error: Pseudoinverse not found for {vessel} - {pseudo_path}")
+                continue
+
+            # Carrega a pseudoinversa
+            pseudo_inv = np.loadtxt(pseudo_path)
+
+            # Acha o parâmetro que teve valor alterado (pode ser mais de um)
+            for param in parameters:
+                if add_values[param] != 0:
+                    stacked_path = os.path.join(self.openBF_dir, f"openBF_updated_{vase}_{param}",
+                                                f"{vessel}_stacked.last")
+                    if os.path.exists(stacked_path):
+                        stacked_output = np.loadtxt(stacked_path)
+                        break  # pega o primeiro encontrado com add_value ≠ 0
+            else:
+                print(f"Warning: No stacked output found for {vessel}. Skipping.")
+                continue
+
+            # Verifica dimensão
+            if pseudo_inv.shape[1] != stacked_output.shape[0]:
+                print(
+                    f"Error: Shape mismatch for {vessel} - pseudo_inv: {pseudo_inv.shape}, output: {stacked_output.shape}")
+                continue
+
+            # Multiplica pseudoinversa pela saída empilhada
+            x_opt = pseudo_inv @ stacked_output
+
+            output_file = os.path.join(output_dir, f"optimized_{vessel}.txt")
+            np.savetxt(output_file, x_opt, fmt="%.14e")
+            print(f"Optimized parameters for {vessel} saved in: {output_file}")
 
 
 # Application
 if __name__ == "__main__":
 
     base_file = "C:/Users/User/Documents/problema_inverso_results_openbf/problema_inverso - Alvo.yaml"
-    updated_file = "C:/Users/User/Documents/problema_inverso_results_openbf/updated_h0.yaml"
+    updated_file = "C:/Users/User/Documents/problema_inverso_results_openbf/resultado.yaml"
     openBF_dir = "C:/Users/User/Documents/problema_inverso_results_openbf"
 
-    updater = OPENBF_Jacobean(base_file, updated_file, openBF_dir)
+    updater = OPENBF_Jacobian(base_file, updated_file, openBF_dir)
 
     # Runs openBF to base_file
     #updater.base_openBF()
 
-    # Creates the Jacobian matrix considering the increments specified for each parameter
-    updater.jacobian_matrix("vase1", 0, 0.001, 0, 0)
+    # Creates the Jacobian pseudoiniverse matrix considering the increments specified for each parameter
+    #updater.jacobian_pseudoinv_matrix("vase1", 0, 0.001, 0, 0)
 
-    # Calculates the inverse matrix
-    #updater.pseudoinverse_matrix()
+    # Creates the optimized output using the pseudoinverse matrix
+    updater.optimized_parameters("vase1", 0, 0.001, 0, 0)
+
+
