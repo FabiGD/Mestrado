@@ -303,13 +303,97 @@ class OPENBF_Jacobian:
                 output_dir = os.path.join(openBF_dir, "jacobians_pseudoinverse")
                 os.makedirs(output_dir, exist_ok=True)  # Creates the folder if it does not exist
 
-                output_file = os.path.join(output_dir, f"pseudo_inv_{vessel}.txt")
+                output_file = os.path.join(output_dir, f"pseudoinv_{vessel}.txt")
                 np.savetxt(output_file, pseudoinv, fmt="%.14e")
                 print(f"Pseudoinverse matrix saved in: {output_file}")
 
             else:
                 print(f"Error: File not found - {file_path}.")
                 return
+
+    def y_til(self, knumber):
+
+        vessels = ["vase1", "vase2", "vase3"]
+        Pdk = {vessel: [] for vessel in vessels}
+
+        for vessel in vessels:
+            # Loads the data from the patient openBF output - ym
+            patient_output = os.path.join(openBF_dir, f"ym - Output paciente", f"{vessel}_stacked.last")
+
+            if os.path.exists(patient_output):
+                data = np.loadtxt(patient_output)
+                patient_data = data[:, 3].reshape(-1, 1) # Pego apenas o 3° nó
+            else:
+                print(f"Error: Patient output file not found - {patient_output}.")
+                return
+
+            # Loads the simulation output corresponding to the initial guess
+            yk_output = os.path.join(openBF_dir, f"y{knumber} - Output iteration {knumber}", f"{vessel}_stacked.last")
+
+            if os.path.exists(yk_output):
+                data = np.loadtxt(yk_output)
+                yk_data = data[:, 3].reshape(-1, 1)  # Pego apenas o 3° nó
+            else:
+                print(f"Error: Iteration output file not found - {yk_output}.")
+                return
+
+            # Loads the Jacobian matrix
+            jacobian_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_{vessel}_stacked.txt")
+
+            if os.path.exists(jacobian_path):
+                jacobian = np.loadtxt(jacobian_path)
+            else:
+                print(f"Error: Jacobian matrix file not found - {jacobian_path}.")
+                return
+
+            # Creates a vector with the parameter values corresponding to the initial guess
+            parameters = ["h0","L","R0"]
+
+            # Loads YAML from base_file
+            with open(self.base_file, "r", encoding="utf-8") as f:
+                yaml_data = yaml.safe_load(f) or {}
+
+            if "network" not in yaml_data:
+                print("Error: The 'network' key was not found in the YAML.")
+                return
+
+            found = False  # Flag to know if the vase was found
+
+            for item in yaml_data["network"]:
+                if item.get("label") == vessel:
+                    for parameter in parameters:
+                        if parameter in item:
+                            value = item[parameter]
+                            Pdk[vessel].append(value)
+                            found = True
+                        else:
+                            print(f"Error: Parameter '{parameter}' not found in vessel '{vessel}'.")
+                            return
+
+            if not found:
+                print(f"Error: Vessel '{vessel}' not found in YAML.")
+
+            # Where the parameters files will be
+            file_dir = os.path.join(openBF_dir, "Pdk")
+            os.makedirs(file_dir, exist_ok=True)
+
+            # Saves the parameters vector in a file
+            Pdk_file = os.path.join(file_dir, f"Pdk_{vessel}.last")
+            param_array = np.array(Pdk[vessel]).reshape(-1, 1)
+            np.savetxt(Pdk_file, param_array, fmt="%.14e")
+            print(f"Parameter vector saved: {Pdk_file}")
+
+            y_til = patient_data - yk_data + (jacobian @ param_array)
+
+            # Where the y_til matrix files will be
+            y_til_dir = os.path.join(openBF_dir, "y_til")
+            os.makedirs(y_til_dir, exist_ok=True)
+
+            # Saves the y_til matrix in a file
+            y_til_file = os.path.join(y_til_dir, f"y_til_{vessel}.last")
+            np.savetxt(y_til_file, y_til, fmt="%.14e")
+            print(f"y_til matrix saved: {Pdk_file}")
+
 
     def file_openBF(self, yaml_file, output_folder_name):
         """Runs openBF in Julia for the specified YAML file;
@@ -347,6 +431,7 @@ class OPENBF_Jacobian:
 
         # Where the base_file output files are
         base_dir = os.path.join(openBF_dir, f"y{knumber} - Output iteration {knumber}")
+        os.makedirs(base_dir, exist_ok=True)
         # Where the updated_file output files will be
         updated_dir = os.path.join(openBF_dir, f"openBF_updated_{vase}_{parameter}")
         os.makedirs(updated_dir, exist_ok=True)
@@ -405,7 +490,10 @@ if __name__ == "__main__":
     #updater.file_openBF(patient_file, "ym - Output paciente")
 
     # Creates the Jacobian pseudoinverse matrix for iteration 0.
-    updater.jacobian_pseudoinv_matrix(0,"vase1", 0.0001,0.001, 0.001)
+    #updater.jacobian_pseudoinv_matrix(0,"vase1", 0.0001,0.001, 0.001)
+
+    # Teste função y til
+    updater.y_til(0)
 
     # Creates the optimized output using the pseudoinverse matrix
     #updater.optimized_parameters("vase1", 0, 0.001, 0, 0)
