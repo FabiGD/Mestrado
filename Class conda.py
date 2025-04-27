@@ -374,7 +374,7 @@ class OPENBF_Jacobian:
                 print(f"Error: Vessel '{vessel}' not found in YAML.")
 
             # Where the parameters files will be
-            file_dir = os.path.join(openBF_dir, "Pdk")
+            file_dir = os.path.join(openBF_dir, f"Pd{knumber}")
             os.makedirs(file_dir, exist_ok=True)
 
             # Saves the parameters vector in a file
@@ -392,7 +392,44 @@ class OPENBF_Jacobian:
             # Saves the y_til matrix in a file
             y_til_file = os.path.join(y_til_dir, f"y_til_{vessel}.last")
             np.savetxt(y_til_file, y_til, fmt="%.14e")
-            print(f"y_til matrix saved: {Pdk_file}")
+            print(f"y_til matrix saved: {y_til_file}")
+
+    def optimized_parameters(self, knumber):
+
+        vessels = ["vase1", "vase2", "vase3"]
+
+        # Where the matrix of optimized parameters will be
+        new_knumber = knumber + 1
+        opt_param_dir = os.path.join(openBF_dir, f"optimized_parameters_Pd{new_knumber}")
+        os.makedirs(opt_param_dir, exist_ok=True)
+
+        for vessel in vessels:
+            # Loads the data from the pseudoinverse matrix
+            pseudoinv_path = os.path.join(openBF_dir, "jacobians_pseudoinverse", f"pseudoinv_{vessel}.txt")
+
+            if os.path.exists(pseudoinv_path):
+                pseudoinv_data = np.loadtxt(pseudoinv_path)
+            else:
+                print(f"Error: Pseudoinverse matrix file not found - {pseudoinv_path}.")
+                return
+
+            # Loads the data from the y_til matrix
+            y_til_path = os.path.join(openBF_dir, "y_til", f"y_til_{vessel}.last")
+
+            if os.path.exists(y_til_path):
+                y_til_data = np.loadtxt(y_til_path).reshape(-1, 1)
+
+            else:
+                print(f"Error: y_til matrix file not found - {y_til_path}.")
+                return
+
+            # Creates the optimized parameters (Pd(k+1)) matrix
+            opt_param_data = pseudoinv_data @ y_til_data
+
+            # Saves the optimized parameters matrix in a file
+            opt_param_file = os.path.join(opt_param_dir, f"opt_parameters_{vessel}.last")
+            np.savetxt(opt_param_file, opt_param_data, fmt="%.14e")
+            print(f"Optimized parameters matrix saved: {opt_param_file}")
 
 
     def file_openBF(self, yaml_file, output_folder_name):
@@ -457,8 +494,9 @@ class OPENBF_Jacobian:
         # Plots the simulation output graphs and saves them
         self.plot_openBF(updated_dir)
 
-    def jacobian_pseudoinv_matrix(self, knumber, vase, add_h0, add_L, add_R0):
-        """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter."""
+    def iteration(self, knumber, vase, add_h0, add_L, add_R0):
+        """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
+        multiplies it to the y_til matrix and generates the optimized parameters."""
         add_values = {"h0": add_h0, "L": add_L, "R0": add_R0}
 
         # Runs openBF to k-iteration YAML file
@@ -474,7 +512,11 @@ class OPENBF_Jacobian:
         # Creates the pseudoinverse matrix
         self.pseudoinverse_matrix()
 
-    #def optimized_parameter(self):
+        # Creates the y_til matrix
+        self.y_til(knumber)
+
+        # Creates the optmized parameters matrix
+        self.optimized_parameters(knumber)
 
 
 # Application
@@ -489,11 +531,8 @@ if __name__ == "__main__":
     # Runs openBF to patient file
     #updater.file_openBF(patient_file, "ym - Output paciente")
 
-    # Creates the Jacobian pseudoinverse matrix for iteration 0.
-    #updater.jacobian_pseudoinv_matrix(0,"vase1", 0.0001,0.001, 0.001)
-
-    # Teste função y til
-    updater.y_til(0)
-
     # Creates the optimized output using the pseudoinverse matrix
-    #updater.optimized_parameters("vase1", 0, 0.001, 0, 0)
+    #updater.optimized_parameters(0,"vase1", 0.0001,0.001, 0.001)
+
+    #iteration
+    updater.iteration(0,"vase1", 0.0001,0.001, 0.001)
