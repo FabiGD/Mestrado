@@ -19,6 +19,7 @@ class OPENBF_Jacobian:
                 Path of the .yaml file to be updated.
             updated_file: str
                 Path of the updated .yaml file.
+
                 The .yaml file of the output_file does not need to exist previously, but the directory does.
                 The inlet file needs to be in the same directory.
             openBF_dir: str
@@ -431,6 +432,68 @@ class OPENBF_Jacobian:
             np.savetxt(opt_param_file, opt_param_data, fmt="%.14e")
             print(f"Optimized parameters matrix saved: {opt_param_file}")
 
+    def update_yaml_with_optimized_parameters(self, base_yaml_path, param_files_dir, output_yaml_path):
+        """
+        Atualiza o YAML de entrada usando os parâmetros otimizados salvos em arquivos separados.
+
+        Args:
+            base_yaml_path (str): Caminho para o YAML original que será atualizado.
+            param_files_dir (str): Diretório onde estão os arquivos 'opt_parameters_vase1.last', etc.
+            output_yaml_path (str): Caminho onde o novo YAML atualizado será salvo.
+        """
+
+        vessels = ["vase1", "vase2", "vase3"]
+        parameters = ["h0", "L", "R0"]
+
+        # Carrega o YAML
+        with open(base_yaml_path, "r", encoding="utf-8") as f:
+            yaml_data = yaml.safe_load(f) or {}
+
+        if "network" not in yaml_data:
+            print("Error: 'network' key not found in YAML.")
+            return
+
+        for vessel in vessels:
+            # Carrega o arquivo de parâmetros otimizados
+            param_file = os.path.join(param_files_dir, f"opt_parameters_{vessel}.last")
+
+            if os.path.exists(param_file):
+                new_params = np.loadtxt(param_file)
+            else:
+                print(f"Error: Parameter file not found - {param_file}. Skipping {vessel}.")
+                continue
+
+            # Garante que new_params é um vetor (não uma matriz)
+            new_params = np.atleast_1d(new_params)
+
+            if len(new_params) != len(parameters):
+                print(
+                    f"Error: Number of parameters mismatch for {vessel}. Expected {len(parameters)}, got {len(new_params)}.")
+                continue
+
+            # Atualiza os valores no YAML
+            for item in yaml_data["network"]:
+                if item.get("label") == vessel:
+                    for i, param in enumerate(parameters):
+                        item[param] = float(new_params[i])
+                    print(f"Updated parameters for {vessel}: {new_params}")
+                    break
+            else:
+                print(f"Warning: Vessel {vessel} not found in YAML.")
+
+        # Salva o novo YAML
+        with open(output_yaml_path, "w", encoding="utf-8") as f:
+            yaml.dump(yaml_data, f, default_flow_style=False, allow_unicode=True)
+
+        print(f"Updated YAML saved in: {output_yaml_path}")
+
+
+
+
+
+
+
+
 
     def file_openBF(self, yaml_file, output_folder_name):
         """Runs openBF in Julia for the specified YAML file;
@@ -515,8 +578,10 @@ class OPENBF_Jacobian:
         # Creates the y_til matrix
         self.y_til(knumber)
 
-        # Creates the optmized parameters matrix
+        # Creates the optimized parameters matrix
         self.optimized_parameters(knumber)
+
+
 
 
 # Application
@@ -531,8 +596,11 @@ if __name__ == "__main__":
     # Runs openBF to patient file
     #updater.file_openBF(patient_file, "ym - Output paciente")
 
-    # Creates the optimized output using the pseudoinverse matrix
-    #updater.optimized_parameters(0,"vase1", 0.0001,0.001, 0.001)
+    #Iteration
+    #updater.iteration(0,"vase1", 0.0001,0.001, 0.001)
 
-    #iteration
-    updater.iteration(0,"vase1", 0.0001,0.001, 0.001)
+    #test
+    base_yaml_path = "C:/Users/User/Documents/problema_inverso_results_openbf/problema_inverso - k=0.yaml"
+    param_files_dir = "C:/Users/User/Documents/problema_inverso_results_openbf/optimized_parameters_Pd1"
+    output_yaml_path = "C:/Users/User/Documents/problema_inverso_results_openbf/problema_inverso - k=1.yaml"
+    updater.update_yaml_with_optimized_parameters(base_yaml_path, param_files_dir, output_yaml_path)
