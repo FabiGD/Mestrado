@@ -143,7 +143,7 @@ class OPENBF_Jacobian:
         os.makedirs(del_dir, exist_ok=True)
 
         for vessel in vessels:
-            base_file_path = os.path.join(base_dir, f"{vessel}_stacked.last")
+            base_file_path = os.path.join(base_dir, f"{vessel}_stacked.last") #!!!
             updated_file_path = os.path.join(updated_dir, f"{vessel}_stacked.last")
             del_file_path = os.path.join(del_dir, f"{vessel}_del_{parameter}_delta={delta_value}.last")
 
@@ -226,6 +226,8 @@ class OPENBF_Jacobian:
             with open(f"{plot_path}.pkl", "wb") as f:
                 pickle.dump(fig, f)
 
+            plt.close(fig)
+
             print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
 
     def stack_partial_derivatives(self, delta_dict, output_path):
@@ -255,7 +257,7 @@ class OPENBF_Jacobian:
 
             for param in valid_parameters:
                 delta = delta_dict[param]
-                file_path = os.path.join(self.openBF_dir, f"partial_deriv_{param}",
+                file_path = os.path.join(openBF_dir, f"partial_deriv_{param}",
                                          f"{vessel}_del_{param}_delta={delta}.last")
 
                 if os.path.exists(file_path):
@@ -317,7 +319,6 @@ class OPENBF_Jacobian:
     def y_til(self, knumber):
 
         vessels = ["vase1", "vase2", "vase3"]
-        Pdk = {vessel: [] for vessel in vessels}
 
         for vessel in vessels:
             # Loads the data from the patient openBF output - ym
@@ -330,7 +331,7 @@ class OPENBF_Jacobian:
                 print(f"Error: Patient output file not found - {patient_output}.")
                 return
 
-            # Loads the simulation output corresponding to the initial guess
+            # Loads the simulation output corresponding to the guess
             yk_output = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
 
             if os.path.exists(yk_output):
@@ -340,17 +341,26 @@ class OPENBF_Jacobian:
                 print(f"Error: Iteration output file not found - {yk_output}.")
                 return
 
-            # Loads the Jacobian matrix
-            jacobian_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_{vessel}_stacked.txt")
+            y_til = patient_data - yk_data
 
-            if os.path.exists(jacobian_path):
-                jacobian = np.loadtxt(jacobian_path)
-            else:
-                print(f"Error: Jacobian matrix file not found - {jacobian_path}.")
-                return
+            # Where the y_til matrix files will be
+            y_til_dir = os.path.join(openBF_dir, "y_til")
+            os.makedirs(y_til_dir, exist_ok=True)
 
-            # Creates a vector with the parameter values corresponding to the initial guess
-            parameters = ["h0","L","R0"]
+            # Saves the y_til matrix in a file
+            y_til_file = os.path.join(y_til_dir, f"y_til_{vessel}.last")
+            np.savetxt(y_til_file, y_til, fmt="%.14e")
+            print(f"y_til matrix saved: {y_til_file}")
+
+    def Pdk(self, knumber):
+        # Loads the parameters of iteration k (Pdk)
+
+        vessels = ["vase1", "vase2", "vase3"]
+        Pdk = {vessel: [] for vessel in vessels}
+
+        for vessel in vessels:
+            # Creates a vector with the parameter values corresponding to the guess
+            parameters = ["h0", "L", "R0"]
 
             # Loads YAML from k_file
             k_file = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
@@ -387,16 +397,6 @@ class OPENBF_Jacobian:
             np.savetxt(Pdk_file, param_array, fmt="%.14e")
             print(f"Parameter vector saved: {Pdk_file}")
 
-            y_til = patient_data - yk_data + (jacobian @ param_array)
-
-            # Where the y_til matrix files will be
-            y_til_dir = os.path.join(openBF_dir, "y_til")
-            os.makedirs(y_til_dir, exist_ok=True)
-
-            # Saves the y_til matrix in a file
-            y_til_file = os.path.join(y_til_dir, f"y_til_{vessel}.last")
-            np.savetxt(y_til_file, y_til, fmt="%.14e")
-            print(f"y_til matrix saved: {y_til_file}")
 
     def optimized_parameters(self, knumber):
 
@@ -408,6 +408,15 @@ class OPENBF_Jacobian:
         os.makedirs(opt_param_dir, exist_ok=True)
 
         for vessel in vessels:
+            # Loads the parameters of the initial guess (Pdk)
+            param_path = os.path.join(openBF_dir, f"Pd{knumber}", f"Pdk_{vessel}.last")
+
+            if os.path.exists(param_path):
+                param_data = np.loadtxt(param_path).reshape(-1, 1)
+            else:
+                print(f"Error: Pdk matrix file not found - {param_path}.")
+                return
+
             # Loads the data from the pseudoinverse matrix
             pseudoinv_path = os.path.join(openBF_dir, "jacobians_pseudoinverse", f"pseudoinv_{vessel}.txt")
 
@@ -427,13 +436,18 @@ class OPENBF_Jacobian:
                 print(f"Error: y_til matrix file not found - {y_til_path}.")
                 return
 
+            # Sub-relaxation factor for the Newton step
+            alpha = 0.5
+
             # Creates the optimized parameters (Pd(k+1)) matrix
-            opt_param_data = pseudoinv_data @ y_til_data
+            vector_product = pseudoinv_data @ y_til_data
+            opt_param_data = param_data + alpha * vector_product
 
             # Saves the optimized parameters matrix in a file
             opt_param_file = os.path.join(opt_param_dir, f"opt_parameters_{vessel}.last")
             np.savetxt(opt_param_file, opt_param_data, fmt="%.14e")
             print(f"Optimized parameters matrix saved: {opt_param_file}")
+
 
     def update_yaml_with_optimized_parameters(self, base_yaml_path, param_files_dir, output_yaml_path):
         """
@@ -491,19 +505,17 @@ class OPENBF_Jacobian:
         print(f"Updated YAML saved in: {output_yaml_path}")
 
     def RMSE(self, knumber):
-        # Calculates the standard deviation between the patient openBF output and the k openBF output,
-        # and between the patient openF and the k + 1 openBF output.
+        # Calculates the standard deviation between the patient openBF output and the k openBF output.
 
         vessels = ["vase1", "vase2", "vase3"]
         rmse_totais_k = []  # Lista para armazenar o RMSE total de cada vaso
-        rmse_totais_kplus = []
+
 
         for vessel in vessels:
 
             # Files paths
             patient_file = os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last")
             k_file = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
-            kplus_file = os.path.join(openBF_dir, f"y{knumber+1} - openBF output iteration {knumber+1}", f"{vessel}_stacked.last")
 
             # Checks if files exists
             if not os.path.exists(patient_file):
@@ -512,14 +524,10 @@ class OPENBF_Jacobian:
             if not os.path.exists(k_file):
                 print(f"Error: File {k_file} not found.")
                 return
-            if not os.path.exists(kplus_file):
-                print(f"Error: File {kplus_file} not found.")
-                return
 
             # Loads stacked files ignoring comments
             patient_data = np.loadtxt(patient_file, comments="#")[:, 1:]  # ignora a 1ª coluna (tempo)
             k_data = np.loadtxt(k_file, comments="#")[:, 1:]
-            kplus_data = np.loadtxt(kplus_file, comments="#")[:, 1:]
 
             def calculate_rmse(y0, y1):
                 if y0.shape != y1.shape:
@@ -536,20 +544,10 @@ class OPENBF_Jacobian:
             rmse_total_k = np.mean(rmse_colunas_k)
             rmse_totais_k.append(rmse_total_k)
 
-            ## Calcula RMSE por coluna do k + 1 output em relação ao output do paciente
-            rmse_colunas_kplus = calculate_rmse(patient_data, kplus_data)
-
-            # RMSE médio por vaso
-            rmse_total_kplus = np.mean(rmse_colunas_kplus)
-            rmse_totais_kplus.append(rmse_total_kplus)
-
         # Cálculo da média dos RMSEs dos 3 vasos para k
         media_rmse_vasos_k = np.mean(rmse_totais_k)
-        print(f"\n### FINAL AVERAGE RMSE (k = {knumber} - patient) (3 vessels): {media_rmse_vasos_k:.6f}")
+        print(f"\n### AVERAGE RMSE (k = {knumber} - patient) (3 vessels): {media_rmse_vasos_k:.6f}")
 
-        # Cálculo da média dos RMSEs dos 3 vasos para k+1
-        media_rmse_vasos_kplus = np.mean(rmse_totais_kplus)
-        print(f"\n### FINAL AVERAGE RMSE (k = {knumber + 1} - patient) (3 vessels): {media_rmse_vasos_kplus:.6f}")
 
     def file_openBF(self, yaml_file, output_folder_name):
         """Runs openBF in Julia for the specified YAML file;
@@ -617,8 +615,15 @@ class OPENBF_Jacobian:
         multiplies it to the y_til matrix and generates the optimized parameters."""
         add_values = {"h0": add_h0, "L": add_L, "R0": add_R0}
 
-        if knumber == 0:  # Runs openBF to k-iteration YAML file only if k = 0
-            k_yaml_file = f"C:/Users/User/Documents/problema_inverso_results_openbf/problema_inverso - k={knumber}.yaml"
+        if knumber == 0:
+            k_yaml_file = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
+
+            # Checks if file exists
+            if not os.path.exists(k_yaml_file):
+                print(f"Error: File {k_yaml_file} not found.")
+                return
+
+            # Runs openBF to 0-iteration YAML file
             self.file_openBF(k_yaml_file, f"y{knumber} - openBF output iteration {knumber}")
 
         for parameter in add_values:
@@ -627,6 +632,9 @@ class OPENBF_Jacobian:
         # Path to the Jacobian matrices directory
         output_path = os.path.join(openBF_dir, f"jacobians")
         self.stack_partial_derivatives(add_values, output_path)
+
+        # Creates the Pdk matrix (parameters of the k-iteration yaml)
+        self.Pdk(knumber)
 
         # Creates the pseudoinverse matrix
         self.pseudoinverse_matrix()
@@ -638,30 +646,41 @@ class OPENBF_Jacobian:
         self.optimized_parameters(knumber)
 
         # Updates YAML with optimized parameters
-        base_yaml_path = f"C:/Users/User/Documents/problema_inverso_results_openbf/problema_inverso - k={knumber}.yaml"
-        opt_param_files_dir = f"C:/Users/User/Documents/problema_inverso_results_openbf/optimized_parameters_Pd{knumber+1}"
-        opt_output_yaml_path = f"C:/Users/User/Documents/problema_inverso_results_openbf/problema_inverso - k={knumber+1}.yaml"
+        base_yaml_path = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
+        opt_param_files_dir = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber+1}")
+        opt_output_yaml_path = os.path.join(openBF_dir, f"problema_inverso - k={knumber+1}.yaml")
+
+        # Checks if file exists
+        if not os.path.exists(base_yaml_path):
+            print(f"Error: File {base_yaml_path} not found.")
+            return
+
         self.update_yaml_with_optimized_parameters(base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
 
         # Runs openBF to the new/optimized yaml file
         self.file_openBF(opt_output_yaml_path, f"y{knumber+1} - openBF output iteration {knumber+1}")
 
         # Calculates the RMSE for the old and new openBF output
-        self.RMSE(knumber)
+        #self.RMSE(knumber)
 
 
     def search_opt(self, vase, add_h0, add_L, add_R0):
 
-        # Starts cronometer
+        # Starts chronometer
         start = time.time()
 
-        # Runs iteration for knumber from 0 to 3
-        for knumber in range(0, 4):
+        # Runs iteration for k from 0 to 3
+        for knumber in range(0, 6):
             self.iteration(knumber, vase, add_h0, add_L, add_R0)
 
-        # Ends cronometer and prints time
+        # Calculates RMSE for k from 0 to 3
+        for knumber in range(0, 6):
+            self.RMSE(knumber)
+
+        # Ends chronometer and prints time
         end = time.time()
-        print(f"Elapsed time: {end - start:.3f} seconds.")
+        minutes = (end - start)/60
+        print(f"Elapsed time: {minutes:.3f} minutes.")
 
 
 
@@ -669,17 +688,14 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    patient_file = "C:/Users/User/Documents/problema_inverso_results_openbf/problema_inverso - Paciente.yaml"
-    k0_file = "C:/Users/User/Documents/problema_inverso_results_openbf/problema_inverso - k=0.yaml"
-    openBF_dir = "C:/Users/User/Documents/problema_inverso_results_openbf"
+    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf/problema_inverso - Paciente.yaml"
+    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf/problema_inverso - k=0.yaml"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf"
 
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
     # Runs openBF to patient file
-    #updater.file_openBF(patient_file, "ym - Output paciente")
+    #updater.file_openBF(patient_file, "ym - openBF output paciente")
 
-    # Iteration
-    #updater.iteration(0,"vase1", 0.0001,0.001, 0.001)
-
-    # teste
-    updater.search_opt("vase1", 0.0001,0.001, 0.001)
+    # Searchs optimized parameters
+    updater.search_opt("vase1", 0.00001,0.0001, 0.0001)
