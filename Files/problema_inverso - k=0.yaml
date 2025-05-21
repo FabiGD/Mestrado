@@ -1,0 +1,48 @@
+project_name: problema_inverso
+inlet_file: circle_of_willis_inlet.dat
+write_results: ["P", "Q", "u", "A"] # ["P", "Q", "u", "A"]
+output_directory: "C:/Users/User/Documents/problema_inverso_results"
+
+blood:
+  rho: 1060.0 # [kg/m^3]
+  mu: 0.004 # [Pa⋅s] 
+solver:
+  Ccfl: 0.9
+  cycles: 100
+  jump: 100
+  convergence_tolerance: 5.0
+network:
+  - label: vase1
+    sn: 1
+    tn: 2
+    L: 0.01 # [m]
+    h0: 0.001 # [m]
+    E: 400000.0 # [Pa]
+    M: 20 # Int (optional)
+    R0: 0.01 # [m]
+    gamma profile: 2 # Laminar Flow
+  - label: vase2
+    sn: 2
+    tn: 3
+    L: 0.02 # [m]
+    h0: 0.00163 # [m]
+    E: 400000.0 # [Pa]
+    M: 20 # Int (optional)
+    R0: 0.0112 # [m]
+    outlet: wk2
+    R1: 5430000000.0 # [Pa⋅s⋅m^-3]
+    Cc: 1.27e-10 # [m^3⋅Pa^-1]
+    gamma profile: 2 # Laminar Flow
+  - label: vase3
+    sn: 2
+    tn: 4
+    L: 0.02 # [m]
+    h0: 0.00163 # [m]
+    E: 400000.0 # [Pa]
+    M: 20 # Int (optional)
+    R0: 0.0062 # [m]
+    outlet: wk2
+    R1: 5430000000.0 # [Pa⋅s⋅m^-3]
+    Cc: 1.27e-10 # [m^3⋅Pa^-1]
+    gamma profile: 2 # Laminar Flow
+  
