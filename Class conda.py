@@ -98,7 +98,7 @@ class OPENBF_Jacobian:
         return
 
     def stack_last_files(self, vessel, variables, data_dir):
-        """Stacks the openBF output for each vessel in the order "A", "P", "Q" and "u" from top to bottom
+        """Stacks the openBF output for each vessel in the order of the variables from top to bottom
         and saves it to a .last file"""
         data_list = []
 
@@ -174,7 +174,7 @@ class OPENBF_Jacobian:
         and saves them in data_dir.
         """
         vessels = ["vase1", "vase2", "vase3"]
-        variables = ["P", "Q", "A", "u"]
+        variables = ["P", "u"]
         titles = ["Vase 1", "Vase 2", "Vase 3"]
 
         # Creates dictionary to store dataframes
@@ -190,8 +190,6 @@ class OPENBF_Jacobian:
 
                 # data = {
                 #   "P": [df_vase1_P, df_vase2_P, df_vase3_P],
-                #   "Q": [df_vase1_Q, df_vase2_Q, df_vase3_Q],
-                #   "A": [df_vase1_A, df_vase2_A, df_vase3_A],
                 #   "u": [df_vase1_u, df_vase2_u, df_vase3_u]
                 # }
 
@@ -200,9 +198,9 @@ class OPENBF_Jacobian:
         os.makedirs(plots_dir, exist_ok=True)
 
         # Plots graphs
-        for var, label, unit in zip(["P", "Q", "A", "u"],
-                                    ["Pressure", "Flow", "Area", "Velocity"],
-                                    ["mmHg", "m³/s", "m²", "m/s"]):
+        for var, label, unit in zip(["P", "u"],
+                                    ["Pressure", "Velocity"],
+                                    ["mmHg", "m/s"]):
             fig, axs = plt.subplots(3, 1, figsize=(10, 14))
 
             for i, title in enumerate(titles):
@@ -288,18 +286,27 @@ class OPENBF_Jacobian:
 
                 # Checks if it is invertible
                 # Calculates the conditional number
-                cond_number = np.linalg.cond(JkT_Jk)
+                cond_matrix = np.linalg.cond(JkT_Jk)
+                cond_Jk = np.linalg.cond(Jk)
 
-                print(f"Conditional number ({vessel}): {cond_number:.2e}")
+                print(f"Conditional number of the Jk matrix ({vessel}): {cond_Jk:.2e}")
+                print(f"Conditional number of the invertible matrix ({vessel}): {cond_matrix:.2e}")
 
                 # Sets a threshold to consider "non-invertible"
                 threshold = 1e12
 
-                if cond_number < threshold:
-                    print("The matrix is invertible.")
+                if cond_matrix < threshold:
+                    print("The JkT@Jk matrix is invertible.")
                 else:
-                    print("Error: The matrix is quasi-singular or non-invertible.")
+                    print("Error: The JkT@Jk matrix is quasi-singular or non-invertible.")
                     return
+
+                if cond_Jk < threshold:
+                    print("The Jk matrix is invertible.")
+                else:
+                    print("Error: The Jk matrix is quasi-singular or non-invertible.")
+                    return
+
 
                 # Calculates the pseudoinverse matrix
                 JkT_Jk_inv = np.linalg.inv(JkT_Jk)
@@ -409,7 +416,11 @@ class OPENBF_Jacobian:
 
         for vessel in vessels:
             # Loads the parameters of the initial guess (Pdk)
-            param_path = os.path.join(openBF_dir, f"Pd{knumber}", f"Pdk_{vessel}.last")
+            if knumber == 0:
+                param_path = os.path.join(openBF_dir, f"Pd{knumber}", f"Pdk_{vessel}.last")
+            else:
+                param_path = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber}",
+                                          f"Pdk_{vessel}.last")
 
             if os.path.exists(param_path):
                 param_data = np.loadtxt(param_path).reshape(-1, 1)
@@ -437,14 +448,14 @@ class OPENBF_Jacobian:
                 return
 
             # Sub-relaxation factor for the Newton step
-            alpha = 0.5
+            alpha = 0.3
 
             # Creates the optimized parameters (Pd(k+1)) matrix
             vector_product = pseudoinv_data @ y_til_data
             opt_param_data = param_data + alpha * vector_product
 
             # Saves the optimized parameters matrix in a file
-            opt_param_file = os.path.join(opt_param_dir, f"opt_parameters_{vessel}.last")
+            opt_param_file = os.path.join(opt_param_dir, f"Pdk_{vessel}.last")
             np.savetxt(opt_param_file, opt_param_data, fmt="%.14e")
             print(f"Optimized parameters matrix saved: {opt_param_file}")
 
@@ -455,7 +466,7 @@ class OPENBF_Jacobian:
 
         Args:
             base_yaml_path (str): Caminho para o YAML original que será atualizado.
-            param_files_dir (str): Diretório onde estão os arquivos 'opt_parameters_vase1.last', etc.
+            param_files_dir (str): Diretório onde estão os arquivos 'Pdk_vase1.last', etc.
             output_yaml_path (str): Caminho onde o novo YAML atualizado será salvo.
         """
 
@@ -472,7 +483,7 @@ class OPENBF_Jacobian:
 
         for vessel in vessels:
             # Carrega o arquivo de parâmetros otimizados
-            param_file = os.path.join(param_files_dir, f"opt_parameters_{vessel}.last")
+            param_file = os.path.join(param_files_dir, f"Pdk_{vessel}.last")
 
             if os.path.exists(param_file):
                 new_params = np.loadtxt(param_file)
@@ -504,49 +515,162 @@ class OPENBF_Jacobian:
 
         print(f"Updated YAML saved in: {output_yaml_path}")
 
-    def RMSE(self, knumber):
-        # Calculates the standard deviation between the patient openBF output and the k openBF output.
+    def plot_RMSE(self, data_dir, knumber_max=6):
+        # Plota o RMSE médio (3 vasos) vs. iteração
+
+        plt.close('all')
+        rmse_medios = []
+
+        for knumber in range(0, knumber_max + 1):
+
+            vessels = ["vase1", "vase2", "vase3"]
+            rmse_totais_k = []  # Lista para armazenar o RMSE total de cada vaso
+
+            for vessel in vessels:
+                # Files paths
+                patient_file = os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last")
+                k_file = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
+
+                # Checks if files exist
+                if not os.path.exists(patient_file):
+                    print(f"Error: File {patient_file} not found.")
+                    return
+                if not os.path.exists(k_file):
+                    print(f"Error: File {k_file} not found.")
+                    return
+
+                # Loads stacked files ignoring comments
+                patient_data = np.loadtxt(patient_file, comments="#")[:, 1:]  # ignora a 1ª coluna (tempo)
+                k_data = np.loadtxt(k_file, comments="#")[:, 1:]
+
+                def calculate_rmse(y0, y1):
+                    if y0.shape != y1.shape:
+                        raise ValueError("Os arquivos têm formas diferentes!")
+                    error = y0 - y1
+                    mse = np.mean(error ** 2, axis=0)  # por coluna
+                    rmse = np.sqrt(mse)
+                    return rmse
+
+                ## Calcula RMSE por coluna do k output em relação ao output do paciente
+                rmse_colunas_k = calculate_rmse(patient_data, k_data)
+
+                # RMSE médio por vaso
+                rmse_total_k = np.mean(rmse_colunas_k)
+                rmse_totais_k.append(rmse_total_k)
+
+            # Cálculo da média dos RMSEs dos 3 vasos para k
+            media_rmse_vasos_k = np.mean(rmse_totais_k)
+            print(f"### AVERAGE RMSE (k = {knumber} - patient) (3 vessels): {media_rmse_vasos_k:.6f}")
+
+            # Armazena
+            rmse_medios.append(media_rmse_vasos_k)
+
+        # Iterações: 0 até max_iter
+        iteracoes = np.arange(0, knumber_max + 1)
+
+        # Plot
+        fig = plt.figure(figsize=(8, 5))
+        plt.plot(iteracoes, rmse_medios, marker='o', linestyle='-', color='tab:red')
+        plt.xlabel('Iterations')
+        plt.ylabel('Average RMSE (3 vessels)')
+        plt.title('Average RMSE vs Iterations')
+        plt.grid(True)
+        plt.tight_layout()
+
+        # Creates folder for saving plots
+        plots_dir = os.path.join(data_dir, "iteration plots")
+        os.makedirs(plots_dir, exist_ok=True)
+
+        # Saves plots in .png .svg and .pdf formats
+        plot_path = os.path.join(plots_dir, f"RMSE_plot")
+
+        plt.savefig(f"{plot_path}.png", dpi=300)
+        plt.savefig(f"{plot_path}.svg")
+        with open(f"{plot_path}.pkl", "wb") as f:
+            pickle.dump(fig, f)
+
+        plt.show()
+        plt.close(fig)
+
+        print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
+
+    def plot_iter(self, data_dir):
+        # Plots parameter and error values versus iterations.
+
+        plt.close('all')
 
         vessels = ["vase1", "vase2", "vase3"]
-        rmse_totais_k = []  # Lista para armazenar o RMSE total de cada vaso
+        titles = ["Vessel 1", "Vessel 2", "Vessel 3"]
 
+        for vessel, title in zip(vessels, titles): # Percorre simutaneamente
 
-        for vessel in vessels:
+            plt.close('all')
 
-            # Files paths
-            patient_file = os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last")
-            k_file = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
+            # Nome do arquivo dentro de cada pasta
+            nome_arquivo = f'Pdk_{vessel}.last'
 
-            # Checks if files exists
-            if not os.path.exists(patient_file):
-                print(f"Error: File {patient_file} not found.")
-                return
-            if not os.path.exists(k_file):
-                print(f"Error: File {k_file} not found.")
-                return
+            # Lista para armazenar os valores de cada parâmetro
+            h0_list = []
+            L_list = []
+            R0_list = []
 
-            # Loads stacked files ignoring comments
-            patient_data = np.loadtxt(patient_file, comments="#")[:, 1:]  # ignora a 1ª coluna (tempo)
-            k_data = np.loadtxt(k_file, comments="#")[:, 1:]
+            # Lista para armazenar o nome das pastas na ordem correta
+            pastas_ordenadas = ['Pd0'] + [f'optimized_parameters_Pd{i}' for i in range(1, 7)]
 
-            def calculate_rmse(y0, y1):
-                if y0.shape != y1.shape:
-                    raise ValueError("Os arquivos têm formas diferentes!")
-                error = y0 - y1
-                mse = np.mean(error ** 2, axis=0)  # por coluna
-                rmse = np.sqrt(mse)
-                return rmse
+            # Loop sobre as pastas
+            for pasta in pastas_ordenadas:
+                caminho_arquivo = os.path.join(openBF_dir, pasta, nome_arquivo)
 
-            ## Calcula RMSE por coluna do k output em relação ao output do paciente
-            rmse_colunas_k = calculate_rmse(patient_data, k_data)
+                # Verifica se o arquivo existe
+                if os.path.isfile(caminho_arquivo):
+                    # Carrega os dados do arquivo
+                    dados = np.loadtxt(caminho_arquivo)
 
-            # RMSE médio por vaso
-            rmse_total_k = np.mean(rmse_colunas_k)
-            rmse_totais_k.append(rmse_total_k)
+                    # Pega os três valores
+                    h0 = dados[0]
+                    L = dados[1]
+                    R0 = dados[2]
 
-        # Cálculo da média dos RMSEs dos 3 vasos para k
-        media_rmse_vasos_k = np.mean(rmse_totais_k)
-        print(f"\n### AVERAGE RMSE (k = {knumber} - patient) (3 vessels): {media_rmse_vasos_k:.6f}")
+                    # Adiciona às listas
+                    h0_list.append(h0)
+                    L_list.append(L)
+                    R0_list.append(R0)
+
+                else:
+                    print(f"Aviso: Arquivo não encontrado em {caminho_arquivo}")
+
+            # Cria o vetor de iterações: de 0 a N-1
+            iteracoes = np.arange(len(h0_list))
+
+            # Plota o gráfico
+            fig = plt.figure(figsize=(10, 6))
+
+            plt.plot(iteracoes, h0_list, marker='o', linestyle='-', label='h0 - Wall thickness')
+            plt.plot(iteracoes, L_list, marker='s', linestyle='--', label='L - Length')
+            plt.plot(iteracoes, R0_list, marker='^', linestyle='-.', label='R0 - Lumen radius')
+
+            plt.xlabel('Iterations')
+            plt.ylabel('Parameters')
+            plt.title(f'Parameters vs Iterations - {title}')
+            plt.grid(True)
+            plt.legend()
+
+            # Creates folder for saving plots
+            plots_dir = os.path.join(data_dir, "iteration plots")
+            os.makedirs(plots_dir, exist_ok=True)
+
+            # Saves plots in .png .svg and .pdf formats
+            plot_path = os.path.join(plots_dir, f"{vessel}_plot")
+
+            plt.savefig(f"{plot_path}.png", dpi=300)
+            plt.savefig(f"{plot_path}.svg")
+            with open(f"{plot_path}.pkl", "wb") as f:
+                pickle.dump(fig, f)
+
+            plt.show()
+            plt.close(fig)
+
+            print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
 
 
     def file_openBF(self, yaml_file, output_folder_name):
@@ -563,14 +687,14 @@ class OPENBF_Jacobian:
 
         # Stacking order of vessels and variables
         vessels = ["vase1", "vase2", "vase3"]
-        variables = ["A", "P", "Q", "u"]
+        variables = ["P", "u"]
 
         # Stack openBF outputs for each vessel individually
         for vessel in vessels:
             self.stack_last_files(vessel, variables, file_dir)
 
         # Plots the simulation output graphs and saves them
-        self.plot_openBF(file_dir)
+        #self.plot_openBF(file_dir)
 
 
     def updated_openBF(self, knumber, vase, parameter, add_value):
@@ -595,7 +719,7 @@ class OPENBF_Jacobian:
 
         # Stacking order of vessels and variables
         vessels = ["vase1", "vase2", "vase3"]
-        variables = ["A", "P", "Q", "u"]
+        variables = ["P", "u"]
 
         # Stack openBF outputs for each vessel individually
         for vessel in vessels:
@@ -608,7 +732,7 @@ class OPENBF_Jacobian:
         self.partial_deriv_files(base_dir, updated_dir, del_dir, parameter)
 
         # Plots the simulation output graphs and saves them
-        self.plot_openBF(updated_dir)
+        #self.plot_openBF(updated_dir)
 
     def iteration(self, knumber, vase, add_h0, add_L, add_R0):
         """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
@@ -633,8 +757,9 @@ class OPENBF_Jacobian:
         output_path = os.path.join(openBF_dir, f"jacobians")
         self.stack_partial_derivatives(add_values, output_path)
 
-        # Creates the Pdk matrix (parameters of the k-iteration yaml)
-        self.Pdk(knumber)
+        # Creates the Pd0 matrix (parameters of the k-iteration yaml)
+        if knumber == 0:
+            self.Pdk(knumber)
 
         # Creates the pseudoinverse matrix
         self.pseudoinverse_matrix()
@@ -660,22 +785,21 @@ class OPENBF_Jacobian:
         # Runs openBF to the new/optimized yaml file
         self.file_openBF(opt_output_yaml_path, f"y{knumber+1} - openBF output iteration {knumber+1}")
 
-        # Calculates the RMSE for the old and new openBF output
-        #self.RMSE(knumber)
-
 
     def search_opt(self, vase, add_h0, add_L, add_R0):
 
         # Starts chronometer
         start = time.time()
 
-        # Runs iteration for k from 0 to 3
+        # Runs iteration for k from 0 to 5
         for knumber in range(0, 6):
             self.iteration(knumber, vase, add_h0, add_L, add_R0)
 
-        # Calculates RMSE for k from 0 to 3
-        for knumber in range(0, 6):
-            self.RMSE(knumber)
+        # Plots RMSE for k from 0 to 5
+        self.plot_RMSE(openBF_dir, 6)
+
+        # Plots the parameters for each iteration
+        self.plot_iter(openBF_dir)
 
         # Ends chronometer and prints time
         end = time.time()
@@ -697,5 +821,5 @@ if __name__ == "__main__":
     # Runs openBF to patient file
     #updater.file_openBF(patient_file, "ym - openBF output paciente")
 
-    # Searchs optimized parameters
+    # Searches optimized parameters
     updater.search_opt("vase1", 0.00001,0.0001, 0.0001)
