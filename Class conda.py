@@ -359,8 +359,8 @@ class OPENBF_Jacobian:
             np.savetxt(y_til_file, y_til, fmt="%.14e")
             print(f"y_til matrix saved: {y_til_file}")
 
-    def Pdk(self, knumber):
-        # Loads the parameters of iteration k (Pdk)
+    def Pdk(self, param_directory, yaml_file):
+        # Loads the parameters of a yaml file and saves it in a directory
 
         vessels = ["vase1", "vase2", "vase3"]
         Pdk = {vessel: [] for vessel in vessels}
@@ -370,7 +370,7 @@ class OPENBF_Jacobian:
             parameters = ["h0", "L", "R0"]
 
             # Loads YAML from k_file
-            k_file = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
+            k_file = os.path.join(openBF_dir, yaml_file)
             with open(k_file, "r", encoding="utf-8") as f:
                 yaml_data = yaml.safe_load(f) or {}
 
@@ -395,7 +395,7 @@ class OPENBF_Jacobian:
                 print(f"Error: Vessel '{vessel}' not found in YAML.")
 
             # Where the parameters files will be
-            file_dir = os.path.join(openBF_dir, f"Pd{knumber}")
+            file_dir = os.path.join(openBF_dir, param_directory)
             os.makedirs(file_dir, exist_ok=True)
 
             # Saves the parameters vector in a file
@@ -461,19 +461,12 @@ class OPENBF_Jacobian:
 
 
     def update_yaml_with_optimized_parameters(self, base_yaml_path, param_files_dir, output_yaml_path):
-        """
-        Atualiza o YAML de entrada usando os parâmetros otimizados salvos em arquivos separados.
-
-        Args:
-            base_yaml_path (str): Caminho para o YAML original que será atualizado.
-            param_files_dir (str): Diretório onde estão os arquivos 'Pdk_vase1.last', etc.
-            output_yaml_path (str): Caminho onde o novo YAML atualizado será salvo.
-        """
+        # Updates the input YAML using the optimized parameters saved in separate files.
 
         vessels = ["vase1", "vase2", "vase3"]
         parameters = ["h0", "L", "R0"]
 
-        # Carrega o YAML
+        # Loads the YAML file
         with open(base_yaml_path, "r", encoding="utf-8") as f:
             yaml_data = yaml.safe_load(f) or {}
 
@@ -482,7 +475,7 @@ class OPENBF_Jacobian:
             return
 
         for vessel in vessels:
-            # Carrega o arquivo de parâmetros otimizados
+            # Loads the file with the optimized parameters
             param_file = os.path.join(param_files_dir, f"Pdk_{vessel}.last")
 
             if os.path.exists(param_file):
@@ -491,7 +484,7 @@ class OPENBF_Jacobian:
                 print(f"Error: Parameter file not found - {param_file}. Skipping {vessel}.")
                 continue
 
-            # Garante que new_params é um vetor (não uma matriz)
+            # Ensures that new_params is a vector (not an array)
             new_params = np.atleast_1d(new_params)
 
             if len(new_params) != len(parameters):
@@ -499,7 +492,7 @@ class OPENBF_Jacobian:
                     f"Error: Number of parameters mismatch for {vessel}. Expected {len(parameters)}, got {len(new_params)}.")
                 continue
 
-            # Atualiza os valores no YAML
+            # Updates the YAML values
             for item in yaml_data["network"]:
                 if item.get("label") == vessel:
                     for i, param in enumerate(parameters):
@@ -509,22 +502,22 @@ class OPENBF_Jacobian:
             else:
                 print(f"Warning: Vessel {vessel} not found in YAML.")
 
-        # Salva o novo YAML
+        # Saves the new YAML file
         with open(output_yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, default_flow_style=False, allow_unicode=True)
 
         print(f"Updated YAML saved in: {output_yaml_path}")
 
     def plot_RMSE(self, data_dir, knumber_max=6):
-        # Plota o RMSE médio (3 vasos) vs. iteração
+        # Plots the average RMSE (3 vessels) vs. iteration
 
         plt.close('all')
-        rmse_medios = []
+        rmse_means = []
 
         for knumber in range(0, knumber_max + 1):
 
             vessels = ["vase1", "vase2", "vase3"]
-            rmse_totais_k = []  # Lista para armazenar o RMSE total de cada vaso
+            rmse_totals_k = []  # List to store the total RMSE of each vessel
 
             for vessel in vessels:
                 # Files paths
@@ -540,37 +533,37 @@ class OPENBF_Jacobian:
                     return
 
                 # Loads stacked files ignoring comments
-                patient_data = np.loadtxt(patient_file, comments="#")[:, 1:]  # ignora a 1ª coluna (tempo)
+                patient_data = np.loadtxt(patient_file, comments="#")[:, 1:]  # Ignores the 1st column (time)
                 k_data = np.loadtxt(k_file, comments="#")[:, 1:]
 
                 def calculate_rmse(y0, y1):
                     if y0.shape != y1.shape:
-                        raise ValueError("Os arquivos têm formas diferentes!")
+                        raise ValueError("The files have different shapes!")
                     error = y0 - y1
-                    mse = np.mean(error ** 2, axis=0)  # por coluna
+                    mse = np.mean(error ** 2, axis=0)  # per column
                     rmse = np.sqrt(mse)
                     return rmse
 
-                ## Calcula RMSE por coluna do k output em relação ao output do paciente
-                rmse_colunas_k = calculate_rmse(patient_data, k_data)
+                ## Calculates column-wise RMSE of k output relative to patient output
+                rmse_columns_k = calculate_rmse(patient_data, k_data)
 
-                # RMSE médio por vaso
-                rmse_total_k = np.mean(rmse_colunas_k)
-                rmse_totais_k.append(rmse_total_k)
+                # Average RMSE per vessel
+                rmse_total_k = np.mean(rmse_columns_k)
+                rmse_totals_k.append(rmse_total_k)
 
-            # Cálculo da média dos RMSEs dos 3 vasos para k
-            media_rmse_vasos_k = np.mean(rmse_totais_k)
-            print(f"### AVERAGE RMSE (k = {knumber} - patient) (3 vessels): {media_rmse_vasos_k:.6f}")
+            # Calculation of the mean RMSEs of the 3 vessels for k
+            mean_rmse_vessels_k = np.mean(rmse_totals_k)
+            print(f"### AVERAGE RMSE (k = {knumber} - patient) (3 vessels): {mean_rmse_vessels_k:.6f}")
 
-            # Armazena
-            rmse_medios.append(media_rmse_vasos_k)
+            # Stores it
+            rmse_means.append(mean_rmse_vessels_k)
 
-        # Iterações: 0 até max_iter
-        iteracoes = np.arange(0, knumber_max + 1)
+        # Iterations: 0 to knumber_max
+        iterations = np.arange(0, knumber_max + 1)
 
-        # Plot
+        # Plots
         fig = plt.figure(figsize=(8, 5))
-        plt.plot(iteracoes, rmse_medios, marker='o', linestyle='-', color='tab:red')
+        plt.plot(iterations, rmse_means, marker='o', linestyle='-', color='tab:red')
         plt.xlabel('Iterations')
         plt.ylabel('Average RMSE (3 vessels)')
         plt.title('Average RMSE vs Iterations')
@@ -595,59 +588,81 @@ class OPENBF_Jacobian:
         print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
 
     def plot_iter(self, data_dir):
-        # Plots parameter and error values versus iterations.
+        # Plots parameter values versus iterations and compares them to the patient parameters.
 
         plt.close('all')
 
         vessels = ["vase1", "vase2", "vase3"]
         titles = ["Vessel 1", "Vessel 2", "Vessel 3"]
 
-        for vessel, title in zip(vessels, titles): # Percorre simutaneamente
+        # Gets the parameters of the patient .yaml
+        patient_parameters = "Pm"
+        patient_yaml = "problema_inverso - Paciente.yaml"
+        self.Pdk(patient_parameters, patient_yaml)
+
+        for vessel, title in zip(vessels, titles): # They run simultaneously
 
             plt.close('all')
 
-            # Nome do arquivo dentro de cada pasta
-            nome_arquivo = f'Pdk_{vessel}.last'
+            # File name within each folder
+            file_name = f'Pdk_{vessel}.last'
 
-            # Lista para armazenar os valores de cada parâmetro
+            # Parameters values lists
             h0_list = []
             L_list = []
             R0_list = []
 
-            # Lista para armazenar o nome das pastas na ordem correta
-            pastas_ordenadas = ['Pd0'] + [f'optimized_parameters_Pd{i}' for i in range(1, 7)]
+            # List to store folder names in the correct order
+            folders = ['Pd0'] + [f'optimized_parameters_Pd{i}' for i in range(1, 7)]
 
-            # Loop sobre as pastas
-            for pasta in pastas_ordenadas:
-                caminho_arquivo = os.path.join(openBF_dir, pasta, nome_arquivo)
+            # Loop over folders
+            for folder in folders:
+                file_path = os.path.join(openBF_dir, folder, file_name)
 
-                # Verifica se o arquivo existe
-                if os.path.isfile(caminho_arquivo):
-                    # Carrega os dados do arquivo
-                    dados = np.loadtxt(caminho_arquivo)
+                # Checks if the file exists
+                if os.path.isfile(file_path):
+                    # Loads file data
+                    dados = np.loadtxt(file_path)
 
-                    # Pega os três valores
+                    # Gets the values
                     h0 = dados[0]
                     L = dados[1]
                     R0 = dados[2]
 
-                    # Adiciona às listas
+                    # Adds them to the lists
                     h0_list.append(h0)
                     L_list.append(L)
                     R0_list.append(R0)
 
                 else:
-                    print(f"Aviso: Arquivo não encontrado em {caminho_arquivo}")
+                    print(f"Error: File not found at {file_path}")
 
-            # Cria o vetor de iterações: de 0 a N-1
-            iteracoes = np.arange(len(h0_list))
+            # Loads the patient parameters
+            patient_path = os.path.join(openBF_dir, patient_parameters, file_name)
+            if os.path.isfile(patient_path):
+                patient_data = np.loadtxt(patient_path)
+                h0_patient = patient_data[0]
+                L_patient = patient_data[1]
+                R0_patient = patient_data[2]
+            else:
+                print(f"Error: Patient file not found at {patient_path}")
+                h0_patient = L_patient = R0_patient = None
 
-            # Plota o gráfico
+            # Creates the iteration vector
+            iterations = np.arange(len(h0_list))
+
+            # Plots the graph
             fig = plt.figure(figsize=(10, 6))
 
-            plt.plot(iteracoes, h0_list, marker='o', linestyle='-', label='h0 - Wall thickness')
-            plt.plot(iteracoes, L_list, marker='s', linestyle='--', label='L - Length')
-            plt.plot(iteracoes, R0_list, marker='^', linestyle='-.', label='R0 - Lumen radius')
+            plt.plot(iterations, h0_list, marker='o', linestyle='-', label='h0 - Wall thickness')
+            plt.plot(iterations, L_list, marker='s', linestyle='-', label='L - Length')
+            plt.plot(iterations, R0_list, marker='^', linestyle='-', label='R0 - Lumen radius')
+
+            # Adds the patient parameters for comparison
+            if h0_patient is not None:
+                plt.axhline(y=h0_patient, color='tab:blue', linestyle='--', linewidth=2, label='Patient h0')
+                plt.axhline(y=L_patient, color='tab:orange', linestyle='--', linewidth=2, label='Patient L')
+                plt.axhline(y=R0_patient, color='tab:green', linestyle='--', linewidth=2, label='Patient R0')
 
             plt.xlabel('Iterations')
             plt.ylabel('Parameters')
@@ -759,7 +774,10 @@ class OPENBF_Jacobian:
 
         # Creates the Pd0 matrix (parameters of the k-iteration yaml)
         if knumber == 0:
-            self.Pdk(knumber)
+            yaml_file = "problema_inverso - k=0.yaml"
+            param_directory = "Pd0"
+
+            self.Pdk(param_directory, yaml_file)
 
         # Creates the pseudoinverse matrix
         self.pseudoinverse_matrix()
@@ -823,3 +841,4 @@ if __name__ == "__main__":
 
     # Searches optimized parameters
     updater.search_opt("vase1", 0.00001,0.0001, 0.0001)
+    
