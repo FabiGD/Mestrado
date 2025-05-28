@@ -260,18 +260,17 @@ class OPENBF_Jacobian:
 
                 if os.path.exists(file_path):
                     matrix = np.loadtxt(file_path)
-                    fourth_column = matrix[:, 3].reshape(-1, 1)  # Seleciona a 4ª coluna e mantém formato 2D
+                    fourth_column = matrix[:, 3].reshape(-1, 1)  # Selects the 4th column and keeps 2D format
                     matrices.append(fourth_column)
                 else:
                     print(f"Error: File not found - {file_path}.")
                     return
 
             if matrices:
-                stacked_matrix = np.hstack(matrices)
+                stacked_matrix = np.column_stack(matrices)
                 output_file = os.path.join(output_path, f"jacobian_{vessel}_stacked.txt")
                 np.savetxt(output_file, stacked_matrix, fmt="%.14e")
                 print(f"Stacked matrix saved in: {output_file}")
-
 
     def pseudoinverse_matrix(self):
         """ Creates the pseudoinverse_matrix using the Jacobian matrix and saves it in the folder: "jacobians_pseudoinverse"."""
@@ -841,4 +840,3 @@ if __name__ == "__main__":
 
     # Searches optimized parameters
     updater.search_opt("vase1", 0.00001,0.0001, 0.0001)
-    
