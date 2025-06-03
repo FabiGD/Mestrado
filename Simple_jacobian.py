@@ -288,23 +288,23 @@ class OPENBF_Jacobian:
                 cond_matrix = np.linalg.cond(JkT_Jk)
                 cond_Jk = np.linalg.cond(Jk)
 
-                print(f"Conditional number of the Jk matrix ({vessel}): {cond_Jk:.2e}")
-                print(f"Conditional number of the invertible matrix ({vessel}): {cond_matrix:.2e}")
-
                 # Sets a threshold to consider "non-invertible"
                 threshold = 1e6
 
-                if cond_matrix < threshold:
-                    print("The JkT@Jk matrix is invertible.")
-                else:
-                    print("Error: The JkT@Jk matrix is quasi-singular or non-invertible.")
-                    return
+                print(f"Conditional number of the Jk matrix ({vessel}): {cond_Jk:.2e}")
 
                 if cond_Jk < threshold:
                     print("The Jk matrix is invertible.")
                 else:
                     print("Error: The Jk matrix is quasi-singular or non-invertible.")
-                    return
+
+                print(f"Conditional number of the inverse matrix ({vessel}): {cond_matrix:.2e}")
+
+                if cond_matrix < threshold:
+                    print("The JkT@Jk matrix is invertible.")
+                else:
+                    print("Error: The JkT@Jk matrix is quasi-singular or non-invertible.")
+
 
 
                 # Calculates the pseudoinverse matrix
@@ -586,7 +586,7 @@ class OPENBF_Jacobian:
 
         print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
 
-    def plot_iter(self, data_dir):
+    def plot_iter(self, data_dir, knumber_max):
         # Plots parameter values versus iterations and compares them to the patient parameters.
 
         plt.close('all')
@@ -612,7 +612,7 @@ class OPENBF_Jacobian:
             R0_list = []
 
             # List to store folder names in the correct order
-            folders = ['Pd0'] + [f'optimized_parameters_Pd{i}' for i in range(1, 7)]
+            folders = ['Pd0'] + [f'optimized_parameters_Pd{i}' for i in range(1, knumber_max + 1)]
 
             # Loop over folders
             for folder in folders:
@@ -803,20 +803,20 @@ class OPENBF_Jacobian:
         self.file_openBF(opt_output_yaml_path, f"y{knumber+1} - openBF output iteration {knumber+1}")
 
 
-    def search_opt(self, vase, add_h0, add_L, add_R0):
+    def search_opt(self, vase, add_h0, add_L, add_R0, knumber_max):
 
         # Starts chronometer
         start = time.time()
 
-        # Runs iteration for k from 0 to 5
-        for knumber in range(0, 6):
+        # Runs iteration for k from 0 to knumber_max
+        for knumber in range(0, knumber_max + 1):
             self.iteration(knumber, vase, add_h0, add_L, add_R0)
 
-        # Plots RMSE for k from 0 to 5
-        self.plot_RMSE(openBF_dir, 6)
+        # Plots RMSE for k from 0 to knumber_max
+        self.plot_RMSE(openBF_dir, knumber_max)
 
         # Plots the parameters for each iteration
-        self.plot_iter(openBF_dir)
+        self.plot_iter(openBF_dir, knumber_max)
 
         # Ends chronometer and prints time
         end = time.time()
@@ -839,4 +839,4 @@ if __name__ == "__main__":
     #updater.file_openBF(patient_file, "ym - openBF output paciente")
 
     # Searches optimized parameters
-    updater.search_opt("vase1", 0.00001,0.0001, 0.0001)
+    updater.search_opt("vase1", 0.00001,0.0001, 0.0001, 5)
