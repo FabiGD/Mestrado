@@ -292,7 +292,7 @@ class OPENBF_Jacobian:
                 print(f"Conditional number of the invertible matrix ({vessel}): {cond_matrix:.2e}")
 
                 # Sets a threshold to consider "non-invertible"
-                threshold = 1e12
+                threshold = 1e6
 
                 if cond_matrix < threshold:
                     print("The JkT@Jk matrix is invertible.")
