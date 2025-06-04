@@ -307,21 +307,22 @@ class OPENBF_Jacobian:
             cond_matrix = np.linalg.cond(JkT_Jk)
             cond_Jk = np.linalg.cond(Jk)
 
-            print(f"Conditional number of the Jk matrix: {cond_Jk:.2e}")
-            print(f"Conditional number of the invertible matrix: {cond_matrix:.2e}")
-
             # Sets a threshold to consider "non-invertible"
             threshold = 1e6
 
-            if cond_matrix < threshold:
-                print("The JkT@Jk matrix is invertible.")
-            else:
-                print("Error: The JkT@Jk matrix is quasi-singular or non-invertible.")
+            print(f"Conditional number of the Jk matrix: {cond_Jk:.2e}")
 
             if cond_Jk < threshold:
                 print("The Jk matrix is invertible.")
             else:
                 print("Error: The Jk matrix is quasi-singular or non-invertible.")
+
+            print(f"Conditional number of the inverse matrix: {cond_matrix:.2e}")
+
+            if cond_matrix < threshold:
+                print("The JkT@Jk matrix is invertible.")
+            else:
+                print("Error: The JkT@Jk matrix is quasi-singular or non-invertible.")
 
             # Calculates the pseudoinverse matrix
             JkT_Jk_inv = np.linalg.inv(JkT_Jk)
@@ -842,4 +843,4 @@ if __name__ == "__main__":
     #updater.file_openBF(patient_file, "ym - openBF output paciente")
 
     # Searches optimized parameters
-    updater.search_opt(0.00001,0.0001, 0.0001, 5)
+    updater.search_opt(0.00001,0.0001, 0.0001, 10)
