@@ -586,7 +586,6 @@ class OPENBF_Jacobian:
         with open(f"{plot_path}.pkl", "wb") as f:
             pickle.dump(fig, f)
 
-        plt.show()
         plt.close(fig)
 
         print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
@@ -682,7 +681,6 @@ class OPENBF_Jacobian:
             with open(f"{plot_path}.pkl", "wb") as f:
                 pickle.dump(fig, f)
 
-            plt.show()
             plt.close(fig)
 
             print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
@@ -843,4 +841,4 @@ if __name__ == "__main__":
     #updater.file_openBF(patient_file, "ym - openBF output paciente")
 
     # Searches optimized parameters
-    updater.search_opt(0.00001,0.0001, 0.0001, 10)
+    updater.search_opt(0.00001,0.0001, 0.0001, 20)
