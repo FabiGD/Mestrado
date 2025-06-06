@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 
 class test_Jacobian:
 
@@ -80,9 +81,71 @@ class test_Jacobian:
             matrices.append(partial_deriv)
 
             stacked_matrix = np.column_stack(matrices)
-            output_file = os.path.join(base_dir, f"jacobian.txt")
+            file_path = os.path.join(base_dir, "jacobians")
+            os.makedirs(file_path, exist_ok=True)
+            output_file = os.path.join(base_dir, "jacobians", f"jacobian_delta={delta}.txt")
             np.savetxt(output_file, stacked_matrix, fmt="%.14e")
             print(f"Stacked matrix saved in: {output_file}")
+
+        # Fim do loop for param
+        # Aqui fora, depois de empilhar todos os vetores:
+        J_numeric = np.column_stack(matrices)
+
+        jacobian_path = os.path.join(base_dir, "jacobians", f"jacobian_delta={delta}.txt")
+        np.savetxt(jacobian_path, J_numeric, fmt="%.14e")
+        print(f"Jacobian matrix saved: {jacobian_path}")
+
+        # Jacobiana analítica com base nos valores de entrada
+        J_analytic = np.array([
+            [base_y * base_z, base_x * base_z, base_x * base_y],
+            [2 * base_x * np.sqrt(base_y) * base_z**3,
+             0.5 * base_x**2 / np.sqrt(base_y) * base_z**3,
+             3 * base_x**2 * np.sqrt(base_y) * base_z**2],
+            [base_y**2 * base_z, 2 * base_x * base_y * base_z, base_x * base_y**2]
+        ])
+
+        diff = J_numeric - J_analytic
+
+        diff_path = os.path.join(base_dir, "jacobians", f"jacobian_diff_delta={delta}.txt")
+        np.savetxt(diff_path, diff, fmt="%.14e")
+        print(f"Jacobian diff saved: {diff_path}")
+
+    def testar_deltas(self, xyz_values):
+
+        deltas = np.logspace(-8, 0, num=20)  # de 1e-8 a 1 (log)
+        erros = []
+
+        # Lê os valores de x, y e z
+        xyz_data = np.loadtxt(xyz_values)
+        base_x, base_y, base_z = xyz_data
+
+        for delta in deltas:
+            self.function(xyz_values, delta)
+
+            # Lê a Jacobiana numérica e a analítica calculada
+            J_numeric = np.loadtxt(os.path.join(files_dir, "jacobians", f"jacobian_delta={delta}.txt"))
+
+            J_analytic = np.array([
+                [base_y * base_z, base_x * base_z, base_x * base_y],
+                [2 * base_x * np.sqrt(base_y) * base_z ** 3,
+                 0.5 * base_x ** 2 / np.sqrt(base_y) * base_z ** 3,
+                 3 * base_x ** 2 * np.sqrt(base_y) * base_z ** 2],
+                [base_y ** 2 * base_z, 2 * base_x * base_y * base_z, base_x * base_y ** 2]
+            ])
+
+            erro = np.linalg.norm(J_numeric - J_analytic) / np.linalg.norm(J_analytic)
+            erros.append(erro)
+
+        # Plotando
+        plt.figure(figsize=(8, 5))
+        plt.loglog(deltas, erros, marker='o', color='blue')
+        plt.xlabel("Delta (variação)")
+        plt.ylabel("Erro relativo da Jacobiana numérica")
+        plt.title("Erro da Jacobiana numérica vs Delta")
+        plt.grid(True, which="both", ls="--", lw=0.5)
+        plt.tight_layout()
+        plt.show()
+
 
 # Application
 if __name__ == "__main__":
@@ -91,5 +154,4 @@ if __name__ == "__main__":
     teste = test_Jacobian(files_dir)
 
     xyz_values = "C:/Users/Reinaldo/Documents/jacobian_test/xyz_values.txt"
-    delta = 0.0001
-    teste.function(xyz_values, delta)
+    teste.testar_deltas(xyz_values)
