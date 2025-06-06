@@ -590,9 +590,8 @@ class OPENBF_Jacobian:
 
         print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
 
-
     def plot_iter(self, data_dir, knumber_max):
-        # Plots parameter values versus iterations and compares them to the patient parameters.
+        """Plots parameter values and relative differences versus iterations, compared to patient parameters."""
 
         plt.close('all')
 
@@ -601,27 +600,27 @@ class OPENBF_Jacobian:
         parameters = ["h0", "L", "R0"]
         num_params_per_vessel = len(parameters)
 
-        # Gets the parameters of the patient .yaml
         patient_parameters = "Pm"
         patient_yaml = "problema_inverso - Paciente.yaml"
         self.Pdk(patient_parameters, patient_yaml)
 
-        # Loads patient parameters stacked
+        # Load patient parameters (stacked)
         patient_stacked_file = os.path.join(openBF_dir, patient_parameters, "Pdk_stacked.last")
         if not os.path.isfile(patient_stacked_file):
             print(f"Error: Patient stacked parameters file not found at {patient_stacked_file}")
             return
         patient_data = np.loadtxt(patient_stacked_file).flatten()
 
+        plots_dir = os.path.join(data_dir, "iteration plots")
+        os.makedirs(plots_dir, exist_ok=True)
+
         for i, (vessel, title) in enumerate(zip(vessels, titles)):
             plt.close('all')
 
-            # Lists to store parameter values across iterations
-            h0_list = []
-            L_list = []
-            R0_list = []
+            # Initialize parameter value lists
+            h0_list, L_list, R0_list = [], [], []
 
-            # List to store folder names in the correct order
+            # Folder list
             folders = ['Pd0'] + [f'optimized_parameters_Pd{j}' for j in range(1, knumber_max + 1)]
 
             for folder in folders:
@@ -629,8 +628,6 @@ class OPENBF_Jacobian:
 
                 if os.path.isfile(stacked_file):
                     stacked_data = np.loadtxt(stacked_file).flatten()
-
-                    # Extract parameters for this vessel
                     start_idx = i * num_params_per_vessel
                     end_idx = start_idx + num_params_per_vessel
                     vessel_params = stacked_data[start_idx:end_idx]
@@ -638,53 +635,73 @@ class OPENBF_Jacobian:
                     h0_list.append(vessel_params[0])
                     L_list.append(vessel_params[1])
                     R0_list.append(vessel_params[2])
-
                 else:
                     print(f"Error: File not found at {stacked_file}")
+                    return
 
-            # Extract patient parameters for this vessel
+            # Get patient values
             start_idx = i * num_params_per_vessel
             end_idx = start_idx + num_params_per_vessel
-            patient_params = patient_data[start_idx:end_idx]
-            h0_patient, L_patient, R0_patient = patient_params
+            h0_patient, L_patient, R0_patient = patient_data[start_idx:end_idx]
 
-            # Creates the iteration vector
+            # Convert to numpy for computation
+            h0_array = np.array(h0_list)
+            L_array = np.array(L_list)
+            R0_array = np.array(R0_list)
+
+            # Compute relative differences
+            diff_h0 = (h0_array - h0_patient) / h0_patient
+            diff_L = (L_array - L_patient) / L_patient
+            diff_R0 = (R0_array - R0_patient) / R0_patient
+
             iterations = np.arange(len(h0_list))
 
-            # Plots the graph
-            fig = plt.figure(figsize=(10, 6))
+            # Plot: Absolute parameter values
+            fig1, ax1 = plt.subplots(figsize=(10, 6))
 
-            plt.plot(iterations, h0_list, marker='o', linestyle='-', label='h0 - Wall thickness')
-            plt.plot(iterations, L_list, marker='s', linestyle='-', label='L - Length')
-            plt.plot(iterations, R0_list, marker='^', linestyle='-', label='R0 - Lumen radius')
+            ax1.plot(iterations, h0_list, 'o-', label='h0 - Wall thickness')
+            ax1.plot(iterations, L_list, 's-', label='L - Length')
+            ax1.plot(iterations, R0_list, '^-', label='R0 - Lumen radius')
 
-            # Adds the patient parameters for comparison
-            plt.axhline(y=h0_patient, color='tab:blue', linestyle='--', linewidth=2, label='Patient h0')
-            plt.axhline(y=L_patient, color='tab:orange', linestyle='--', linewidth=2, label='Patient L')
-            plt.axhline(y=R0_patient, color='tab:green', linestyle='--', linewidth=2, label='Patient R0')
+            ax1.axhline(h0_patient, color='tab:blue', linestyle='--', linewidth=2, label='Patient h0')
+            ax1.axhline(L_patient, color='tab:orange', linestyle='--', linewidth=2, label='Patient L')
+            ax1.axhline(R0_patient, color='tab:green', linestyle='--', linewidth=2, label='Patient R0')
 
-            plt.xlabel('Iterations')
-            plt.ylabel('Parameters')
-            plt.title(f'Parameters vs Iterations - {title}')
-            plt.grid(True)
-            plt.legend()
+            ax1.set(title=f'Parameters vs Iterations - {title}', xlabel='Iterations', ylabel='Parameter Values')
+            ax1.grid(True)
+            ax1.legend()
 
-            # Creates folder for saving plots
-            plots_dir = os.path.join(data_dir, "iteration plots")
-            os.makedirs(plots_dir, exist_ok=True)
+            plot_path1 = os.path.join(plots_dir, f"{vessel}_plot")
+            fig1.savefig(f"{plot_path1}.png", dpi=300)
+            fig1.savefig(f"{plot_path1}.svg")
+            with open(f"{plot_path1}.pkl", "wb") as f:
+                pickle.dump(fig1, f)
+            plt.close(fig1)
 
-            # Saves plots in .png .svg and .pkl formats
-            plot_path = os.path.join(plots_dir, f"{vessel}_plot")
+            print(f"Saved: {plot_path1}.png, .svg, .pkl")
 
-            plt.savefig(f"{plot_path}.png", dpi=300)
-            plt.savefig(f"{plot_path}.svg")
-            with open(f"{plot_path}.pkl", "wb") as f:
-                pickle.dump(fig, f)
+            # Plot: Relative differences
+            fig2, ax2 = plt.subplots(figsize=(10, 6))
 
-            plt.close(fig)
+            ax2.plot(iterations, diff_h0, 'o-', label='h0 - Wall thickness')
+            ax2.plot(iterations, diff_L, 's-', label='L - Length')
+            ax2.plot(iterations, diff_R0, '^-', label='R0 - Lumen radius')
 
-            print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
+            ax2.axhline(0, color='gray', linestyle='--', linewidth=1)
 
+            ax2.set(title=f'Relative Parameter Difference - {title}',
+                    xlabel='Iterations', ylabel='Relative Difference')
+            ax2.grid(True)
+            ax2.legend()
+
+            plot_path2 = os.path.join(plots_dir, f"{vessel}_relative_diff_plot")
+            fig2.savefig(f"{plot_path2}.png", dpi=300)
+            fig2.savefig(f"{plot_path2}.svg")
+            with open(f"{plot_path2}.pkl", "wb") as f:
+                pickle.dump(fig2, f)
+            plt.close(fig2)
+
+            print(f"Saved: {plot_path2}.png, .svg, .pkl")
 
     def file_openBF(self, yaml_file, output_folder_name):
         """Runs openBF in Julia for the specified YAML file;
@@ -841,4 +858,5 @@ if __name__ == "__main__":
     #updater.file_openBF(patient_file, "ym - openBF output paciente")
 
     # Searches optimized parameters
-    updater.search_opt(0.00001,0.0001, 0.0001, 20)
+    #updater.search_opt(0.00001,0.0001, 0.0001, 20)
+    updater.plot_iter(openBF_dir, 20)
