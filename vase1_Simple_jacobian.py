@@ -293,8 +293,6 @@ class OPENBF_Jacobian:
             else:
                 print("Error: The JkT@Jk matrix is quasi-singular or non-invertible.")
 
-
-
             # Calculates the pseudoinverse matrix
             JkT_Jk_inv = np.linalg.inv(JkT_Jk)
             pseudoinv = JkT_Jk_inv @ Jk.T
@@ -311,7 +309,6 @@ class OPENBF_Jacobian:
             return
 
     def y_til(self, vessel, knumber):
-
 
         # Loads the data from the patient openBF output - ym
         patient_output = os.path.join(openBF_dir, f"ym - openBF output paciente", f"{vessel}_stacked.last")
@@ -345,10 +342,9 @@ class OPENBF_Jacobian:
         print(f"y_til matrix saved: {y_til_file}")
 
     def Pdk(self, vessel, param_directory, yaml_file):
-        # Loads the parameters of a yaml file and saves it in a directory
+        """Loads the parameters of a yaml file and saves it in a directory."""
 
-        #Pdk = {vessel: [] for vessel}
-        Pdk = []
+        Pdk = {vessel: []}
 
         # Creates a vector with the parameter values corresponding to the guess
         parameters = ["h0", "L", "R0"]
@@ -389,7 +385,11 @@ class OPENBF_Jacobian:
         print(f"Parameter vector saved: {Pdk_file}")
 
 
-    def optimized_parameters(self, vessel, knumber):
+    def optimized_parameters(self, vessel, alpha, knumber):
+        """ Obtains the optimized parameters Pdk+1 and saves them in a file.
+        
+        Parameters:
+            alpha (int): Alpha is the sub-relaxation factor for the Newton step."""
 
         # Where the matrix of optimized parameters will be
         new_knumber = knumber + 1
@@ -428,9 +428,6 @@ class OPENBF_Jacobian:
             print(f"Error: y_til matrix file not found - {y_til_path}.")
             return
 
-        # Sub-relaxation factor for the Newton step
-        alpha = 0.3
-
         # Creates the optimized parameters (Pd(k+1)) matrix
         vector_product = pseudoinv_data @ y_til_data
         opt_param_data = param_data + alpha * vector_product
@@ -439,6 +436,13 @@ class OPENBF_Jacobian:
         opt_param_file = os.path.join(opt_param_dir, f"Pdk_{vessel}.last")
         np.savetxt(opt_param_file, opt_param_data, fmt="%.14e")
         print(f"Optimized parameters matrix saved: {opt_param_file}")
+
+        # Checking optimized parameters: prevents negative values
+        if np.any(opt_param_data < 0):
+            raise ValueError(
+                f"Invalid parameter: Negative value detected in {opt_param_data.flatten()}.\n"
+                f"Check the value of alpha or the input data."
+            )
 
 
     def update_yaml_with_optimized_parameters(self, vessel, base_yaml_path, param_files_dir, output_yaml_path):
@@ -486,7 +490,7 @@ class OPENBF_Jacobian:
         print(f"Updated YAML saved in: {output_yaml_path}")
 
     def plot_RMSE(self, vessel, data_dir, knumber_max=6):
-        # Plots the average RMSE (3 vessels) vs. iteration
+        # Plots the average RMSE vs. iteration
 
         plt.close('all')
         rmse_means = []
@@ -718,7 +722,7 @@ class OPENBF_Jacobian:
         # Plots the simulation output graphs and saves them
         #self.plot_openBF(vessel, updated_dir)
 
-    def iteration(self, knumber, vase, add_h0, add_L, add_R0):
+    def iteration(self, knumber, vase, alpha, add_h0, add_L, add_R0):
         """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
         multiplies it to the y_til matrix and generates the optimized parameters."""
         add_values = {"h0": add_h0, "L": add_L, "R0": add_R0}
@@ -755,7 +759,7 @@ class OPENBF_Jacobian:
         self.y_til(vase, knumber)
 
         # Creates the optimized parameters matrix
-        self.optimized_parameters(vase, knumber)
+        self.optimized_parameters(vase, alpha, knumber)
 
         # Updates YAML with optimized parameters
         base_yaml_path = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
@@ -773,14 +777,14 @@ class OPENBF_Jacobian:
         self.file_openBF(opt_output_yaml_path, f"y{knumber+1} - openBF output iteration {knumber+1}")
 
 
-    def search_opt(self, vase, add_h0, add_L, add_R0, knumber_max):
+    def search_opt(self, vase, alpha, add_h0, add_L, add_R0, knumber_max):
 
         # Starts chronometer
         start = time.time()
 
         # Runs iteration for k from 0 to knumber_max
         for knumber in range(0, knumber_max + 1):
-            self.iteration(knumber, vase, add_h0, add_L, add_R0)
+            self.iteration(knumber, vase, alpha, add_h0, add_L, add_R0)
 
         # Plots RMSE for k from 0 to knumber_max
         self.plot_RMSE(vase, openBF_dir, knumber_max)
@@ -799,14 +803,15 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1/problema_inverso - Paciente.yaml"
-    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1/problema_inverso - k=0.yaml"
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1"
+    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2/problema_inverso - Paciente.yaml"
+    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2/problema_inverso - k=0.yaml"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2"
 
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
-    # Runs openBF to patient filae
+    # Runs openBF to patient file
     #updater.file_openBF(patient_file, "ym - openBF output paciente")
 
     # Searches optimized parameters
-    updater.search_opt("vase1", 0.00001,0.0001, 0.0001, 20)
+    alpha = 0.3
+    updater.search_opt("vase2", alpha, 0.00001,0.0001, 0.0001, 5)
