@@ -147,6 +147,7 @@ class OPENBF_Jacobian:
         # Checks if both files exist
         if not os.path.exists(base_file_path) or not os.path.exists(updated_file_path):
             print(f"Error: Files for {vessel} not found. Skipped.")
+            return
 
         # Loads the files .last
         base_data = np.loadtxt(base_file_path)
@@ -196,7 +197,7 @@ class OPENBF_Jacobian:
                                     ["mmHg", "m/s"]):
             fig, axs = plt.subplots(3, 1, figsize=(10, 14))
 
-            df = data[var]
+            df = data[var][0]
             for j in range(1, 6):  # Colunas dos Nós (1 a 5)
                 axs.scatter(df["Time"], df[f"Length {j}"], label=f"Length {j}")
                 axs.plot(df["Time"], df[f"Length {j}"], linestyle='-', alpha=0.6)
