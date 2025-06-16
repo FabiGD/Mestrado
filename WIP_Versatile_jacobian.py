@@ -153,7 +153,7 @@ class OPENBF_Jacobian:
         print(f"Saved file: {stacked_file}")
 
 
-    def partial_deriv_files(self, vessel, base_dir, updated_dir, del_dir, parameter):
+    def partial_deriv_files_simple(self, vessel, base_dir, updated_dir, del_dir, parameter):
         """
         Subtracts the stacked files of base_dir from the stacked files of updated_dir,
         divides by the delta parameter and saves the result in del_dir.
@@ -191,6 +191,52 @@ class OPENBF_Jacobian:
         del_data = (updated_data - base_data) / delta_value
 
         # Saves the result
+        np.savetxt(del_file_path, del_data, fmt="%.14e")
+        print(f"Partial derivatives file saved: {del_file_path}")
+
+
+    def partial_deriv_files_global(self, base_dir, updated_dir, del_dir, vessel, parameter, delta_value):
+        """
+        Subtracts the stacked files of base_dir from the stacked files of updated_dir,
+        divides by the delta parameter and saves the result in del_dir.
+        """
+
+        print(f"Parameter '{parameter}' difference: {delta_value} for {vessel}")
+
+        if delta_value == 0:
+            print(f"Warning: Parameter difference for {parameter} is zero. Avoiding division by zero.")
+            return
+
+        # Cria diretório de saída se não existir
+        os.makedirs(del_dir, exist_ok=True)
+
+        base_file_path = os.path.join(base_dir, f"vessels_stacked.last")
+        updated_file_path = os.path.join(updated_dir, f"vessels_stacked.last")
+        del_file_path = os.path.join(del_dir, f"{vessel}_del_{parameter}_delta={delta_value}.last")
+
+        # Verifica existência
+        if not os.path.exists(base_file_path):
+            print(f"Error: Base file not found: {base_file_path}")
+            return
+
+        if not os.path.exists(updated_file_path):
+            print(f"Error: Updated file not found: {updated_file_path}")
+            return
+
+        # Carrega dados
+        base_data = np.loadtxt(base_file_path)
+        updated_data = np.loadtxt(updated_file_path)
+
+        # Verifica dimensões
+        if base_data.shape != updated_data.shape:
+            print(
+                f"Error: Incompatible dimensions for {parameter} ({vessel}): {base_data.shape} vs {updated_data.shape}.")
+            return
+
+        # Calcula derivada parcial
+        del_data = (updated_data - base_data) / delta_value
+
+        # Salva resultado
         np.savetxt(del_file_path, del_data, fmt="%.14e")
         print(f"Partial derivatives file saved: {del_file_path}")
 
@@ -292,6 +338,9 @@ class OPENBF_Jacobian:
             output_file = os.path.join(output_path, f"jacobian_{vessel}_stacked.txt")
             np.savetxt(output_file, stacked_matrix, fmt="%.14e")
             print(f"Stacked matrix saved in: {output_file}")
+
+            print(f"Jacobian matrix for {vessel} saved in: {output_file}, shape: {stacked_matrix.shape}")
+
 
     def stack_global_jacobian(self, delta_dict):
         parameters = ["h0", "L", "R0"]
@@ -419,7 +468,7 @@ class OPENBF_Jacobian:
             return
 
 
-    def y_til(self, vessel, knumber):
+    def y_tilde_simple(self, vessel, knumber):
 
         # Loads the data from the patient openBF output - ym
         patient_output = os.path.join(openBF_dir, f"ym - openBF output paciente", f"{vessel}_stacked.last")
@@ -452,48 +501,111 @@ class OPENBF_Jacobian:
         np.savetxt(y_til_file, y_til, fmt="%.14e")
         print(f"y_til matrix saved: {y_til_file}")
 
-    def Pdk(self, vessel, param_directory, yaml_file):
-        """Loads the parameters of a yaml file and saves it in a directory."""
+    def y_tilde_global(self, knumber):
+        ''' Constructs the y-tilde matrix: compute the difference between the openBF output from the
+        iteration k .yaml file and the openBF output from the patient's .yaml file'''
 
-        Pdk = {vessel: []}
+        # Loads the data from the patient openBF output - ym
+        patient_output = os.path.join(openBF_dir, "ym - openBF output paciente", "vessels_stacked.last")
 
-        # Creates a vector with the parameter values corresponding to the guess
+        if os.path.exists(patient_output):
+            data = np.loadtxt(patient_output)
+            patient_data = data[:, 3].reshape(-1, 1)  # Just takes the 3rd knot (4th column)
+        else:
+            print(f"Error: Patient output file not found - {patient_output}.")
+            return
+
+        # Loads the simulation output corresponding to the guess
+        yk_output = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}",
+                                 "vessels_stacked.last")
+
+        if os.path.exists(yk_output):
+            data = np.loadtxt(yk_output)
+            yk_data = data[:, 3].reshape(-1, 1)  # Just takes the 3rd knot (4th column)
+        else:
+            print(f"Error: Iteration output file not found - {yk_output}.")
+            return
+
+        y_tilde = patient_data - yk_data
+
+        # Saves the y_tilde matrix in a file
+        y_tilde_file = os.path.join(openBF_dir, f"y_tilde.last")
+        np.savetxt(y_tilde_file, y_tilde, fmt="%.14e")
+        print(f"y_tilde matrix saved: {y_tilde_file}")
+
+    def Pdk(self, func_type, param_directory, yaml_file):
+        """
+        Loads the parameters from a YAML file and saves them to a file.
+        If func_type is 'vase1', 'vase2', or 'vase3', saves a single vessel file.
+        If func_type is 'global', saves all vessels stacked vertically in one file.
+        """
+
         parameters = ["h0", "L", "R0"]
 
-        # Loads YAML from k_file
-        k_file = os.path.join(openBF_dir, yaml_file)
+        # Load YAML
+        k_file = os.path.join(self.openBF_dir, yaml_file)
         with open(k_file, "r", encoding="utf-8") as f:
             yaml_data = yaml.safe_load(f) or {}
 
         if "network" not in yaml_data:
-            print("Error: The 'network' key was not found in the YAML.")
+            print("Error: 'network' key not found in YAML.")
             return
 
-        found = False  # Flag to know if the vase was found
-
-        for item in yaml_data["network"]:
-            if item.get("label") == vessel:
-                for parameter in parameters:
-                    if parameter in item:
-                        value = item[parameter]
-                        Pdk[vessel].append(value)
-                        found = True
-                    else:
-                        print(f"Error: Parameter '{parameter}' not found in vessel '{vessel}'.")
-                        return
-
-        if not found:
-            print(f"Error: Vessel '{vessel}' not found in YAML.")
-
-        # Where the parameters files will be
-        file_dir = os.path.join(openBF_dir, param_directory)
+        file_dir = os.path.join(self.openBF_dir, param_directory)
         os.makedirs(file_dir, exist_ok=True)
 
-        # Saves the parameters vector in a file
-        Pdk_file = os.path.join(file_dir, f"Pdk_{vessel}.last")
-        param_array = np.array(Pdk[vessel]).reshape(-1, 1)
-        np.savetxt(Pdk_file, param_array, fmt="%.14e")
-        print(f"Parameter vector saved: {Pdk_file}")
+        # Caso global → empilha todos os vasos
+        if func_type == "global":
+            vessels = ["vase1", "vase2", "vase3"]
+            Pdk = []
+
+            for vessel in vessels:
+                vessel_params = []
+                found = False
+                for item in yaml_data["network"]:
+                    if item.get("label") == vessel:
+                        for param in parameters:
+                            if param in item:
+                                vessel_params.append(item[param])
+                                found = True
+                            else:
+                                print(f"Error: Parameter '{param}' not found in vessel '{vessel}'.")
+                                return
+                if not found:
+                    print(f"Error: Vessel '{vessel}' not found in YAML.")
+                    return
+
+                Pdk.append(np.array(vessel_params).reshape(-1, 1))
+
+            stacked = np.vstack(Pdk)
+            output_path = os.path.join(file_dir, "Pdk_stacked.last")
+            np.savetxt(output_path, stacked, fmt="%.14e")
+            print(f"Stacked parameter vector saved: {output_path}")
+
+        # Caso simples → salva apenas um vaso
+        elif func_type in ["vase1", "vase2", "vase3"]:
+            Pdk = []
+            found = False
+            for item in yaml_data["network"]:
+                if item.get("label") == func_type:
+                    for param in parameters:
+                        if param in item:
+                            Pdk.append(item[param])
+                            found = True
+                        else:
+                            print(f"Error: Parameter '{param}' not found in vessel '{func_type}'.")
+                            return
+            if not found:
+                print(f"Error: Vessel '{func_type}' not found in YAML.")
+                return
+
+            output_path = os.path.join(file_dir, f"Pdk_{func_type}.last")
+            np.savetxt(output_path, np.array(Pdk).reshape(-1, 1), fmt="%.14e")
+            print(f"Parameter vector saved: {output_path}")
+
+        else:
+            print(f"Error: Invalid func_type '{func_type}'. Must be 'vase1', 'vase2', 'vase3' or 'global'.")
+            return
 
 
     def optimized_parameters_simple(self, vessel, alpha, knumber):
@@ -956,7 +1068,7 @@ class OPENBF_Jacobian:
 
         patient_parameters = "Pm"
         patient_yaml = "problema_inverso - Paciente.yaml"
-        self.Pdk(patient_parameters, patient_yaml)
+        self.Pdk("global", patient_parameters, patient_yaml)
 
         # Load patient parameters (stacked)
         patient_stacked_file = os.path.join(openBF_dir, patient_parameters, "Pdk_stacked.last")
@@ -1129,7 +1241,7 @@ class OPENBF_Jacobian:
             del_dir = os.path.join(openBF_dir, f"partial_deriv_{parameter}")
 
             # Calculates and creates the partial derivatives files
-            self.partial_deriv_files(vase, base_dir, updated_dir, del_dir, parameter)
+            self.partial_deriv_files_simple(vase, base_dir, updated_dir, del_dir, parameter)
 
             # Plots the simulation output graphs and saves them
             #self.plot_openBF(vessel, updated_dir)
@@ -1148,7 +1260,7 @@ class OPENBF_Jacobian:
             # Plots the simulation output graphs and saves them
             #self.plot_openBF(updated_dir)
 
-    def iteration_simple(self, knumber, vase, alpha, add_h0, add_L, add_R0):
+    def iteration_simple(self, knumber, vessel, alpha, add_h0, add_L, add_R0):
         """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
         multiplies it to the y_til matrix and generates the optimized parameters."""
         add_values = {"h0": add_h0, "L": add_L, "R0": add_R0}
@@ -1162,31 +1274,31 @@ class OPENBF_Jacobian:
                 return
 
             # Runs openBF to 0-iteration YAML file
-            self.file_openBF(vase, k_yaml_file, f"y{knumber} - openBF output iteration {knumber}")
+            self.file_openBF(vessel, k_yaml_file, f"y{knumber} - openBF output iteration {knumber}")
 
         for parameter in add_values:
-            func_type = vase
-            self.updated_openBF(func_type, knumber, vase, parameter, add_values[parameter])
+            func_type = vessel
+            self.updated_openBF(func_type, knumber, vessel, parameter, add_values[parameter])
 
         # Path to the Jacobian matrices directory
         output_path = os.path.join(openBF_dir, f"jacobians")
-        self.stack_simple_jacobian(vase, add_values, output_path)
+        self.stack_simple_jacobian(vessel, add_values, output_path)
 
         # Creates the Pd0 matrix (parameters of the k-iteration yaml)
         if knumber == 0:
             yaml_file = "problema_inverso - k=0.yaml"
             param_directory = "Pd0"
 
-            self.Pdk(vase, param_directory, yaml_file)
+            self.Pdk(vessel, param_directory, yaml_file)
 
         # Creates the pseudoinverse matrix
-        self.pseudoinverse_matrix(vase)
+        self.pseudoinverse_matrix_simple(vessel)
 
         # Creates the y_til matrix
-        self.y_til(vase, knumber)
+        self.y_tilde_simple(vessel, knumber)
 
         # Creates the optimized parameters matrix
-        self.optimized_parameters(vase, alpha, knumber)
+        self.optimized_parameters_simple(vessel, alpha, knumber)
 
         # Updates YAML with optimized parameters
         base_yaml_path = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
@@ -1198,10 +1310,10 @@ class OPENBF_Jacobian:
             print(f"Error: File {base_yaml_path} not found.")
             return
 
-        self.update_yaml_with_optimized_parameters(vase, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
+        self.update_yaml_with_optimized_parameters_simple(vessel, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
 
         # Runs openBF to the new/optimized yaml file
-        self.file_openBF(vase, opt_output_yaml_path, f"y{knumber+1} - openBF output iteration {knumber+1}")
+        self.file_openBF(vessel, opt_output_yaml_path, f"y{knumber+1} - openBF output iteration {knumber+1}")
 
 
     def iteration_global(self, knumber, add_h0, add_L, add_R0):
@@ -1220,17 +1332,17 @@ class OPENBF_Jacobian:
                 return
 
             # Runs openBF to 0-iteration YAML file
-            self.file_openBF(k_yaml_file, f"y{knumber} - openBF output iteration {knumber}")
+            self.file_openBF(func_type, k_yaml_file, f"y{knumber} - openBF output iteration {knumber}")
 
         for parameter in add_values:
             for vessel in vessels:
-                self.updated_openBF(knumber, vessel, parameter, add_values[parameter])
+                self.updated_openBF(func_type, knumber, vessel, parameter, add_values[parameter])
 
                 # Calculates and creates the partial derivatives files
                 base_dir = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}")
                 updated_dir = os.path.join(self.openBF_dir, f"openBF_updated_{parameter}_{vessel}")
                 del_dir = os.path.join(self.openBF_dir, f"partial_deriv_{parameter}")
-                self.partial_deriv_files(base_dir, updated_dir, del_dir, vessel, parameter, add_values[parameter])
+                self.partial_deriv_files_global(base_dir, updated_dir, del_dir, vessel, parameter, add_values[parameter])
 
         # Path to the Jacobian matrices directory
         self.stack_global_jacobian(add_values)
@@ -1240,13 +1352,13 @@ class OPENBF_Jacobian:
             yaml_file = "problema_inverso - k=0.yaml"
             param_directory = "Pd0"
 
-            self.Pdk(param_directory, yaml_file)
+            self.Pdk(func_type, param_directory, yaml_file)
 
         # Pseudoinverse
         self.pseudoinverse_matrix_global()
 
         # y_tilde
-        self.y_tilde(knumber)
+        self.y_tilde_global(knumber)
 
         # Optimized parameters
         self.optimized_parameters_global(knumber)
@@ -1311,4 +1423,4 @@ if __name__ == "__main__":
 
     # Searches optimized parameters
     alpha = 0.3
-    updater.search_opt("vase2", alpha, 0.00001,0.0001, 0.0001, 5)
+    updater.search_opt("vase2", alpha, 0.00001,0.0001, 0.0001, 20)
