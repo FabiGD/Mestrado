@@ -231,7 +231,7 @@ class OPENBF_Jacobian:
         """
         parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
 
-        # Filtra os parâmetros com delta != 0
+        # Filters parameters with delta != 0
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
 
         for param in parameters:
@@ -350,7 +350,7 @@ class OPENBF_Jacobian:
         # Creates a vector with the parameter values corresponding to the guess
         parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
 
-        # Filtra os parâmetros com delta != 0
+        # Filters parameters with delta != 0
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
 
         # Loads YAML from k_file
@@ -454,7 +454,7 @@ class OPENBF_Jacobian:
 
         parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
 
-        # Filtra os parâmetros com delta != 0
+        # Filters parameters with delta != 0
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
 
         # Loads the YAML file
@@ -734,7 +734,7 @@ class OPENBF_Jacobian:
         multiplies it to the y_til matrix and generates the optimized parameters."""
         add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E}
 
-        # Filtra os parâmetros com delta != 0
+        # Filters parameters with delta != 0
         valid_parameters = [param for param in add_values if add_values[param] != 0]
         print (f"The valid parameters are: {valid_parameters}.")
 
@@ -814,9 +814,9 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3/problema_inverso - Paciente.yaml"
-    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3/problema_inverso - k=0.yaml"
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3"
+    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_teste/problema_inverso - Paciente.yaml"
+    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_teste/problema_inverso - k=0.yaml"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_teste"
 
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
@@ -826,4 +826,4 @@ if __name__ == "__main__":
     # Searches optimized parameters
     # search_opt(self, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     alpha = 0.3
-    updater.search_opt("vase3", alpha, 0.00001,0.0001, 0.0001, 0, 0, 0, 20)
+    updater.search_opt("vase3", alpha, 0.00001,0.0001, 0.0001, 0, 0, 10, 20)
