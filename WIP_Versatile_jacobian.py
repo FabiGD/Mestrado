@@ -958,8 +958,8 @@ class OPENBF_Jacobian:
         print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
 
 
-    def plot_iter_simple(self, vessel, data_dir: str, knumber_max: int):
-        """Plots parameter values vs. iterations and their relative differences compared to patient data."""
+    def plot_iter_simple(self, vessel, delta_dict, data_dir: str, knumber_max: int):
+        """Plota os parâmetros com delta ≠ 0 e suas diferenças relativas em relação ao paciente."""
 
         plt.close('all')
 
@@ -967,80 +967,89 @@ class OPENBF_Jacobian:
         plots_dir = os.path.join(data_dir, "iteration plots")
         os.makedirs(plots_dir, exist_ok=True)
 
-        # Load patient parameters
         patient_parameters = "Pm"
         patient_yaml = "problema_inverso - Paciente.yaml"
-        self.Pdk(vessel, patient_parameters, patient_yaml)
+        self.Pdk(vessel, delta_dict, patient_parameters, patient_yaml)
 
-        plt.close('all')
         file_name = file_template.format(vessel)
-
-        # Build list of folder names in order
         folders = ['Pd0'] + [f'optimized_parameters_Pd{i}' for i in range(1, knumber_max + 1)]
 
-        h0_list, L_list, R0_list = [], [], []
+        # Parâmetros válidos
+        all_parameters = ["h0", "L", "R0", "E", "Rp", "Rd"]
+        param_labels = {
+            "h0": "h0 - Wall thickness",
+            "L": "L - Length",
+            "R0": "R0 - Lumen radius",
+            "E": "E - Elastic modulus",
+            "Rp": "Rp - Proximal radius",
+            "Rd": "Rd - Distal radius"
+        }
+
+        valid_params = [p for p in all_parameters if delta_dict.get(p, 0) != 0]
+        param_series = {p: [] for p in valid_params}
 
         for folder in folders:
-            file_path = os.path.join(openBF_dir, folder, file_name)
-
+            file_path = os.path.join(self.openBF_dir, folder, file_name)
             if not os.path.isfile(file_path):
                 print(f"Error: File not found at {file_path}")
                 return
 
-            dados = np.loadtxt(file_path)
-            h0_list.append(dados[0])
-            L_list.append(dados[1])
-            R0_list.append(dados[2])
+            dados = np.loadtxt(file_path).flatten()
+            for i, p in enumerate(valid_params):
+                param_series[p].append(dados[i])
 
-        # Load patient data
-        patient_path = os.path.join(openBF_dir, patient_parameters, file_name)
+        # Carrega parâmetros do paciente
+        patient_path = os.path.join(self.openBF_dir, patient_parameters, file_name)
         if not os.path.isfile(patient_path):
             print(f"Error: Patient file not found at {patient_path}")
             return
 
-        patient_data = np.loadtxt(patient_path)
-        h0_patient, L_patient, R0_patient = patient_data[:3]
+        patient_data = np.loadtxt(patient_path).flatten()
+        patient_vals = {p: patient_data[i] for i, p in enumerate(valid_params)}
 
-        # Relative differences
-        h0_list_np = np.array(h0_list)
-        L_list_np = np.array(L_list)
-        R0_list_np = np.array(R0_list)
+        iterations = np.arange(len(folders))
 
-        diff_h0 = (h0_list_np - h0_patient) / h0_patient
-        diff_L = (L_list_np - L_patient) / L_patient
-        diff_R0 = (R0_list_np - R0_patient) / R0_patient
+        # Plot: valores absolutos com eixo secundário para E
+        fig1, ax1 = plt.subplots(figsize=(10, 6))
+        ax2 = ax1.twinx()
 
-        iterations = np.arange(len(h0_list))
+        for p in valid_params:
+            y = param_series[p]
+            label = param_labels.get(p, p)
 
-        # Plot: Absolute values
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(iterations, h0_list, 'o-', label='h0 - Wall thickness')
-        ax.plot(iterations, L_list, 's-', label='L - Length')
-        ax.plot(iterations, R0_list, '^-', label='R0 - Lumen radius')
+            if p == "E":
+                ax2.plot(iterations, y, 'o-', label=label, color='tab:red')
+                ax2.axhline(patient_vals[p], linestyle='--', linewidth=2, color='tab:red', label=f'Patient {p}')
+            else:
+                line, = ax1.plot(iterations, y, 'o-', label=label)
+                ax1.axhline(patient_vals[p], linestyle='--', linewidth=2, color=line.get_color(), label=f'Patient {p}')
 
-        ax.axhline(h0_patient, color='tab:blue', linestyle='--', linewidth=2, label='Patient h0')
-        ax.axhline(L_patient, color='tab:orange', linestyle='--', linewidth=2, label='Patient L')
-        ax.axhline(R0_patient, color='tab:green', linestyle='--', linewidth=2, label='Patient R0')
 
-        ax.set(title=f'Parameters vs Iterations - {vessel}', xlabel='Iterations', ylabel='Parameters')
-        ax.grid(True)
-        ax.legend()
+        ax1.set(title=f'Parameters vs Iterations - {vessel}', xlabel='Iterations', ylabel='Parameter Values')
+        ax2.set_ylabel('Elastic modulus', color='tab:red')
+        ax1.grid(True)
+
+        lines, labels = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines + lines2, labels + labels2, loc='best')
 
         plot_path = os.path.join(plots_dir, f"{vessel}_plot")
-        fig.savefig(f"{plot_path}.png", dpi=300)
-        fig.savefig(f"{plot_path}.svg")
+        fig1.savefig(f"{plot_path}.png", dpi=300)
+        fig1.savefig(f"{plot_path}.svg")
         with open(f"{plot_path}.pkl", "wb") as f:
-            pickle.dump(fig, f)
-        plt.close(fig)
-
+            pickle.dump(fig1, f)
+        plt.close(fig1)
         print(f"Saved: {plot_path}.png, .svg, .pkl")
 
-        # Plot: Relative differences
+        # Plot: diferenças relativas
         fig2, ax2 = plt.subplots(figsize=(10, 6))
-        ax2.plot(iterations, diff_h0, 'o-', label='h0 - Wall thickness')
-        ax2.plot(iterations, diff_L, 's-', label='L - Length')
-        ax2.plot(iterations, diff_R0, '^-', label='R0 - Lumen radius')
+        for p in valid_params:
+            vals = np.array(param_series[p])
+            ref = patient_vals[p]
+            diff = (vals - ref) / ref
+            ax2.plot(iterations, diff, marker='o', label=param_labels.get(p, p))
 
+        ax2.axhline(0, color='gray', linestyle='--', linewidth=1)
         ax2.set(title=f'Relative Difference of Parameters - {vessel}',
                 xlabel='Iterations', ylabel='Relative Difference')
         ax2.grid(True)
@@ -1052,9 +1061,8 @@ class OPENBF_Jacobian:
         with open(f"{rel_diff_path}.pkl", "wb") as f:
             pickle.dump(fig2, f)
         plt.close(fig2)
-
         print(f"Saved: {rel_diff_path}.png, .svg, .pkl")
-
+    
 
     def plot_iter_global(self, data_dir, knumber_max):
         """Plots parameter values and relative differences versus iterations, compared to patient parameters."""
@@ -1375,6 +1383,8 @@ class OPENBF_Jacobian:
 
     def search_opt(self, func_type, alpha, add_h0, add_L, add_R0, knumber_max):
 
+        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0}
+
         # Starts chronometer
         start = time.time()
 
@@ -1389,7 +1399,7 @@ class OPENBF_Jacobian:
             self.plot_RMSE_simple(vase, openBF_dir, knumber_max)
 
             # Plots the parameters for each iteration
-            self.plot_iter_simple(vase, openBF_dir, knumber_max)
+            self.plot_iter_simple(vase, add_values, openBF_dir, knumber_max)
         else:
             # Runs iteration for k from 0 to knumber_max
             for knumber in range(0, knumber_max + 1):
