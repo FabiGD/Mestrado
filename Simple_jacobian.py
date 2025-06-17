@@ -229,7 +229,7 @@ class OPENBF_Jacobian:
         delta_dict (dict): Dictionary with the deltas used in each parameter.
         output_path (str): Path where the stacked files will be saved.
         """
-        parameters = ["h0", "L", "R0"]
+        parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
 
         # Filtra os parâmetros com delta != 0
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
@@ -342,13 +342,16 @@ class OPENBF_Jacobian:
         np.savetxt(y_til_file, y_til, fmt="%.14e")
         print(f"y_til matrix saved: {y_til_file}")
 
-    def Pdk(self, vessel, param_directory, yaml_file):
+    def Pdk(self, vessel, delta_dict, param_directory, yaml_file):
         """Loads the parameters of a yaml file and saves it in a directory."""
 
         Pdk = {vessel: []}
 
         # Creates a vector with the parameter values corresponding to the guess
-        parameters = ["h0", "L", "R0"]
+        parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
+
+        # Filtra os parâmetros com delta != 0
+        valid_parameters = [param for param in parameters if delta_dict[param] != 0]
 
         # Loads YAML from k_file
         k_file = os.path.join(openBF_dir, yaml_file)
@@ -363,7 +366,7 @@ class OPENBF_Jacobian:
 
         for item in yaml_data["network"]:
             if item.get("label") == vessel:
-                for parameter in parameters:
+                for parameter in valid_parameters:
                     if parameter in item:
                         value = item[parameter]
                         Pdk[vessel].append(value)
@@ -446,10 +449,13 @@ class OPENBF_Jacobian:
             )
 
 
-    def update_yaml_with_optimized_parameters(self, vessel, base_yaml_path, param_files_dir, output_yaml_path):
+    def update_yaml_with_optimized_parameters(self, vessel, delta_dict, base_yaml_path, param_files_dir, output_yaml_path):
         # Updates the input YAML using the optimized parameters saved in separate files.
 
-        parameters = ["h0", "L", "R0"]
+        parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
+
+        # Filtra os parâmetros com delta != 0
+        valid_parameters = [param for param in parameters if delta_dict[param] != 0]
 
         # Loads the YAML file
         with open(base_yaml_path, "r", encoding="utf-8") as f:
@@ -470,14 +476,14 @@ class OPENBF_Jacobian:
         # Ensures that new_params is a vector (not an array)
         new_params = np.atleast_1d(new_params)
 
-        if len(new_params) != len(parameters):
+        if len(new_params) != len(valid_parameters):
             print(
-                f"Error: Number of parameters mismatch for {vessel}. Expected {len(parameters)}, got {len(new_params)}.")
+                f"Error: Number of parameters mismatch for {vessel}. Expected {len(valid_parameters)}, got {len(new_params)}.")
 
         # Updates the YAML values
         for item in yaml_data["network"]:
             if item.get("label") == vessel:
-                for i, param in enumerate(parameters):
+                for i, param in enumerate(valid_parameters):
                     item[param] = float(new_params[i])
                 print(f"Updated parameters for {vessel}: {new_params}")
                 break
@@ -723,10 +729,14 @@ class OPENBF_Jacobian:
         # Plots the simulation output graphs and saves them
         #self.plot_openBF(vessel, updated_dir)
 
-    def iteration(self, knumber, vase, alpha, add_h0, add_L, add_R0):
+    def iteration(self, knumber, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E):
         """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
         multiplies it to the y_til matrix and generates the optimized parameters."""
-        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0}
+        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E}
+
+        # Filtra os parâmetros com delta != 0
+        valid_parameters = [param for param in add_values if add_values[param] != 0]
+        print (f"The valid parameters are: {valid_parameters}.")
 
         if knumber == 0:
             k_yaml_file = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
@@ -739,7 +749,7 @@ class OPENBF_Jacobian:
             # Runs openBF to 0-iteration YAML file
             self.file_openBF(k_yaml_file, f"y{knumber} - openBF output iteration {knumber}")
 
-        for parameter in add_values:
+        for parameter in valid_parameters:
             self.updated_openBF(knumber, vase, parameter, add_values[parameter])
 
         # Path to the Jacobian matrices directory
@@ -751,7 +761,7 @@ class OPENBF_Jacobian:
             yaml_file = "problema_inverso - k=0.yaml"
             param_directory = "Pd0"
 
-            self.Pdk(vase, param_directory, yaml_file)
+            self.Pdk(vase, add_values, param_directory, yaml_file)
 
         # Creates the pseudoinverse matrix
         self.pseudoinverse_matrix(vase)
@@ -772,20 +782,20 @@ class OPENBF_Jacobian:
             print(f"Error: File {base_yaml_path} not found.")
             return
 
-        self.update_yaml_with_optimized_parameters(vase, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
+        self.update_yaml_with_optimized_parameters(vase, add_values, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
 
         # Runs openBF to the new/optimized yaml file
         self.file_openBF(opt_output_yaml_path, f"y{knumber+1} - openBF output iteration {knumber+1}")
 
 
-    def search_opt(self, vase, alpha, add_h0, add_L, add_R0, knumber_max):
+    def search_opt(self, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max):
 
         # Starts chronometer
         start = time.time()
 
         # Runs iteration for k from 0 to knumber_max
         for knumber in range(0, knumber_max + 1):
-            self.iteration(knumber, vase, alpha, add_h0, add_L, add_R0)
+            self.iteration(knumber, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E)
 
         # Plots RMSE for k from 0 to knumber_max
         self.plot_RMSE(vase, openBF_dir, knumber_max)
@@ -814,5 +824,6 @@ if __name__ == "__main__":
     #updater.file_openBF(patient_file, "ym - openBF output paciente")
 
     # Searches optimized parameters
+    # search_opt(self, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     alpha = 0.3
-    updater.search_opt("vase3", alpha, 0.00001,0.0001, 0.0001, 20)
+    updater.search_opt("vase3", alpha, 0.00001,0.0001, 0.0001, 0, 0, 0, 20)
