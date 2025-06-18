@@ -8,6 +8,7 @@ import numpy as np
 import time
 
 from julia import Main
+from matplotlib.ticker import ScalarFormatter
 
 class OPENBF_Jacobian:
     """
@@ -685,15 +686,26 @@ class OPENBF_Jacobian:
                 plt.close(fig1)
                 print(f"Saved: {plot_path}.png, .svg, .pkl")
 
-            # Plot absoluto exclusivo para E
+            # Absolute plot to parameter "E"
             if has_E:
                 figE, axE = plt.subplots(figsize=(10, 6))
+
+                # Força o uso de valores absolutos no eixo Y (sem notação científica)
+                from matplotlib.ticker import ScalarFormatter
+                formatter = ScalarFormatter(useMathText=False)
+                formatter.set_scientific(False)
+                axE.yaxis.set_major_formatter(formatter)
+                axE.ticklabel_format(style='plain', axis='y')
+
                 y = param_series["E"]
-                lineE, = axE.plot(iterations, y, 'o-', color='tab:red', label=param_labels["E"])
+                axE.plot(iterations, y, 'o-', color='tab:red', label=param_labels["E"])
                 axE.axhline(patient_vals["E"], linestyle='--', linewidth=2, color='tab:red', label='Patient E')
-                axE.set(title=f'Elastic Modulus vs Iterations - {title}', xlabel='Iterations', ylabel='Parameter Values')
+
+                axE.set(title=f'Elastic Modulus vs Iterations - {title}',
+                        xlabel='Iterations', ylabel='Elastic modulus [Pa]')
                 axE.grid(True)
                 axE.legend()
+
                 plot_path_E = os.path.join(plots_dir, f"{vessel}_plot_E_only")
                 figE.savefig(f"{plot_path_E}.png", dpi=300)
                 figE.savefig(f"{plot_path_E}.svg")
@@ -720,7 +732,7 @@ class OPENBF_Jacobian:
                 pickle.dump(fig2, f)
             plt.close(fig2)
             print(f"Saved: {rel_diff_path}.png, .svg, .pkl")
-
+    
 
     def file_openBF(self, yaml_file, output_folder_name):
         """Runs openBF in Julia for the specified YAML file;
@@ -873,9 +885,9 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_teste_global/problema_inverso - Paciente.yaml"
-    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_teste_global/problema_inverso - k=0.yaml"
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_teste_global"
+    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_global/problema_inverso - Paciente.yaml"
+    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_global/problema_inverso - k=0.yaml"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_global"
 
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
@@ -885,4 +897,5 @@ if __name__ == "__main__":
     # Searches optimized parameters
     #search_opt(self, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     alpha = 0.3
-    updater.search_opt(alpha, 0.00001, 0.0001, 0.0001, 0, 0, 10, 3)
+    updater.search_opt(alpha, 0.00001, 0.0001, 0.0001, 0, 0, 0, 20)
+
