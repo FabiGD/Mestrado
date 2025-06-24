@@ -785,7 +785,6 @@ class OPENBF_Jacobian:
         # Stacking order of vessels and variables
         vessels = ["vase1", "vase2", "vase3"]
         variables = ["P", "u"]
-        parameters = ["h0", "L", "R0"]
 
         # Stack openBF outputs for each vessel individually
         for vessel in vessels:
