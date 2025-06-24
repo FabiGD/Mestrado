@@ -310,7 +310,7 @@ class OPENBF_Jacobian:
             print(f"Error: File not found - {file_path}.")
             return
 
-    def y_til(self, vessel, knumber):
+    def y_tilde(self, vessel, knumber):
 
         # Loads the data from the patient openBF output - ym
         patient_output = os.path.join(openBF_dir, f"ym - openBF output paciente", f"{vessel}_stacked.last")
@@ -332,16 +332,16 @@ class OPENBF_Jacobian:
             print(f"Error: Iteration output file not found - {yk_output}.")
             return
 
-        y_til = patient_data - yk_data
+        y_tilde = patient_data - yk_data
 
-        # Where the y_til matrix files will be
-        y_til_dir = os.path.join(openBF_dir, "y_til")
-        os.makedirs(y_til_dir, exist_ok=True)
+        # Where the y_tilde matrix files will be
+        y_tilde_dir = os.path.join(openBF_dir, "y_tilde")
+        os.makedirs(y_tilde_dir, exist_ok=True)
 
-        # Saves the y_til matrix in a file
-        y_til_file = os.path.join(y_til_dir, f"y_til_{vessel}.last")
-        np.savetxt(y_til_file, y_til, fmt="%.14e")
-        print(f"y_til matrix saved: {y_til_file}")
+        # Saves the y_tilde matrix in a file
+        y_tilde_file = os.path.join(y_tilde_dir, f"y_tilde_{vessel}.last")
+        np.savetxt(y_tilde_file, y_tilde, fmt="%.14e")
+        print(f"y_tilde matrix saved: {y_tilde_file}")
 
     def Pdk(self, vessel, delta_dict, param_directory, yaml_file):
         """Loads the parameters of a yaml file and saves it in a directory."""
@@ -423,18 +423,18 @@ class OPENBF_Jacobian:
             print(f"Error: Pseudoinverse matrix file not found - {pseudoinv_path}.")
             return
 
-        # Loads the data from the y_til matrix
-        y_til_path = os.path.join(openBF_dir, "y_til", f"y_til_{vessel}.last")
+        # Loads the data from the y_tilde matrix
+        y_tilde_path = os.path.join(openBF_dir, "y_tilde", f"y_tilde_{vessel}.last")
 
-        if os.path.exists(y_til_path):
-            y_til_data = np.loadtxt(y_til_path).reshape(-1, 1)
+        if os.path.exists(y_tilde_path):
+            y_tilde_data = np.loadtxt(y_tilde_path).reshape(-1, 1)
 
         else:
-            print(f"Error: y_til matrix file not found - {y_til_path}.")
+            print(f"Error: y_tilde matrix file not found - {y_tilde_path}.")
             return
 
         # Creates the optimized parameters (Pd(k+1)) matrix
-        vector_product = pseudoinv_data @ y_til_data
+        vector_product = pseudoinv_data @ y_tilde_data
         opt_param_data = param_data + alpha * vector_product
 
         # Saves the optimized parameters matrix in a file
@@ -748,7 +748,7 @@ class OPENBF_Jacobian:
 
     def iteration(self, knumber, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E):
         """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
-        multiplies it to the y_til matrix and generates the optimized parameters."""
+        multiplies it to the y_tilde matrix and generates the optimized parameters."""
         add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E}
 
         # Filters parameters with delta != 0
@@ -783,8 +783,8 @@ class OPENBF_Jacobian:
         # Creates the pseudoinverse matrix
         self.pseudoinverse_matrix(vase)
 
-        # Creates the y_til matrix
-        self.y_til(vase, knumber)
+        # Creates the y_tilde matrix
+        self.y_tilde(vase, knumber)
 
         # Creates the optimized parameters matrix
         self.optimized_parameters(vase, alpha, knumber)
