@@ -8,6 +8,7 @@ import numpy as np
 import time
 
 from julia import Main
+from matplotlib.ticker import ScalarFormatter
 
 class OPENBF_Jacobian:
     """
@@ -305,9 +306,9 @@ class OPENBF_Jacobian:
         delta_dict (dict): Dictionary with the deltas used in each parameter.
         output_path (str): Path where the stacked files will be saved.
         """
-        parameters = ["h0", "L", "R0"]
+        parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
 
-        # Filtra os parâmetros com delta != 0
+        # Filters parameters with delta != 0
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
 
         for param in parameters:
@@ -343,7 +344,7 @@ class OPENBF_Jacobian:
 
 
     def stack_global_jacobian(self, delta_dict):
-        parameters = ["h0", "L", "R0"]
+        parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
         vessels = ["vase1", "vase2", "vase3"]
 
         global_columns = []  # Lista final com as 9 coluna
@@ -533,14 +534,18 @@ class OPENBF_Jacobian:
         np.savetxt(y_tilde_file, y_tilde, fmt="%.14e")
         print(f"y_tilde matrix saved: {y_tilde_file}")
 
-    def Pdk(self, func_type, param_directory, yaml_file):
+    def Pdk(self, func_type, delta_dict, param_directory, yaml_file):
         """
         Loads the parameters from a YAML file and saves them to a file.
         If func_type is 'vase1', 'vase2', or 'vase3', saves a single vessel file.
         If func_type is 'global', saves all vessels stacked vertically in one file.
         """
 
-        parameters = ["h0", "L", "R0"]
+        # Creates a vector with the parameter values corresponding to the guess
+        parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
+
+        # Filters parameters with delta != 0
+        valid_parameters = [param for param in parameters if delta_dict[param] != 0]
 
         # Load YAML
         k_file = os.path.join(self.openBF_dir, yaml_file)
@@ -564,7 +569,7 @@ class OPENBF_Jacobian:
                 found = False
                 for item in yaml_data["network"]:
                     if item.get("label") == vessel:
-                        for param in parameters:
+                        for param in valid_parameters:
                             if param in item:
                                 vessel_params.append(item[param])
                                 found = True
@@ -588,7 +593,7 @@ class OPENBF_Jacobian:
             found = False
             for item in yaml_data["network"]:
                 if item.get("label") == func_type:
-                    for param in parameters:
+                    for param in valid_parameters:
                         if param in item:
                             Pdk.append(item[param])
                             found = True
@@ -712,10 +717,13 @@ class OPENBF_Jacobian:
         print(f"Optimized parameters saved: {opt_param_file}")
 
 
-    def update_yaml_with_optimized_parameters_simple(self, vessel, base_yaml_path, param_files_dir, output_yaml_path):
+    def update_yaml_with_optimized_parameters_simple(self, vessel, delta_dict, base_yaml_path, param_files_dir, output_yaml_path):
         # Updates the input YAML using the optimized parameters saved in separate files.
 
-        parameters = ["h0", "L", "R0"]
+        parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
+
+        # Filters parameters with delta != 0
+        valid_parameters = [param for param in parameters if delta_dict[param] != 0]
 
         # Loads the YAML file
         with open(base_yaml_path, "r", encoding="utf-8") as f:
@@ -736,14 +744,14 @@ class OPENBF_Jacobian:
         # Ensures that new_params is a vector (not an array)
         new_params = np.atleast_1d(new_params)
 
-        if len(new_params) != len(parameters):
+        if len(new_params) != len(valid_parameters):
             print(
-                f"Error: Number of parameters mismatch for {vessel}. Expected {len(parameters)}, got {len(new_params)}.")
+                f"Error: Number of parameters mismatch for {vessel}. Expected {len(valid_parameters)}, got {len(new_params)}.")
 
         # Updates the YAML values
         for item in yaml_data["network"]:
             if item.get("label") == vessel:
-                for i, param in enumerate(parameters):
+                for i, param in enumerate(valid_parameters):
                     item[param] = float(new_params[i])
                 print(f"Updated parameters for {vessel}: {new_params}")
                 break
@@ -974,15 +982,14 @@ class OPENBF_Jacobian:
         file_name = file_template.format(vessel)
         folders = ['Pd0'] + [f'optimized_parameters_Pd{i}' for i in range(1, knumber_max + 1)]
 
-        # Parâmetros válidos
         all_parameters = ["h0", "L", "R0", "E", "Rp", "Rd"]
         param_labels = {
-            "h0": "h0 - Wall thickness",
-            "L": "L - Length",
-            "R0": "R0 - Lumen radius",
-            "E": "E - Elastic modulus",
-            "Rp": "Rp - Proximal radius",
-            "Rd": "Rd - Distal radius"
+            "h0": "h0 - Wall thickness [m]",
+            "L": "L - Length [m]",
+            "R0": "R0 - Lumen radius [m]",
+            "E": "E - Elastic modulus [Pa]",
+            "Rp": "Rp - Proximal radius [m]",
+            "Rd": "Rd - Distal radius [m]"
         }
 
         valid_params = [p for p in all_parameters if delta_dict.get(p, 0) != 0]
@@ -998,7 +1005,6 @@ class OPENBF_Jacobian:
             for i, p in enumerate(valid_params):
                 param_series[p].append(dados[i])
 
-        # Carrega parâmetros do paciente
         patient_path = os.path.join(self.openBF_dir, patient_parameters, file_name)
         if not os.path.isfile(patient_path):
             print(f"Error: Patient file not found at {patient_path}")
@@ -1009,52 +1015,61 @@ class OPENBF_Jacobian:
 
         iterations = np.arange(len(folders))
 
-        # Plot: valores absolutos com eixo secundário para E
-        fig1, ax1 = plt.subplots(figsize=(10, 6))
-        ax2 = ax1.twinx()
+        # Separar E dos outros
+        params_main = [p for p in valid_params if p != "E"]
+        has_E = "E" in valid_params
 
-        for p in valid_params:
-            y = param_series[p]
-            label = param_labels.get(p, p)
-
-            if p == "E":
-                ax2.plot(iterations, y, 'o-', label=label, color='tab:red')
-                ax2.axhline(patient_vals[p], linestyle='--', linewidth=2, color='tab:red', label=f'Patient {p}')
-            else:
+        # Plot absoluto (sem E)
+        if params_main:
+            fig1, ax1 = plt.subplots(figsize=(10, 6))
+            for p in params_main:
+                y = param_series[p]
+                label = param_labels.get(p, p)
                 line, = ax1.plot(iterations, y, 'o-', label=label)
-                ax1.axhline(patient_vals[p], linestyle='--', linewidth=2, color=line.get_color(), label=f'Patient {p}')
+                ax1.axhline(patient_vals[p], linestyle='--', linewidth=2,
+                            color=line.get_color(), label=f'Patient {p}')
+            ax1.set(title=f'Parameters vs Iterations - {vessel}', xlabel='Iterations', ylabel='Parameter Values')
+            ax1.grid(True)
+            ax1.legend()
+            plot_path = os.path.join(plots_dir, f"{vessel}_plot_all_params")
+            fig1.savefig(f"{plot_path}.png", dpi=300)
+            fig1.savefig(f"{plot_path}.svg")
+            with open(f"{plot_path}.pkl", "wb") as f:
+                pickle.dump(fig1, f)
+            plt.close(fig1)
+            print(f"Saved: {plot_path}.png, .svg, .pkl")
 
+        # Plot exclusivo para E
+        if has_E:
+            figE, axE = plt.subplots(figsize=(10, 6))
+            axE.yaxis.set_major_formatter(ScalarFormatter(useMathText=False))
+            axE.ticklabel_format(style='plain', axis='y')
+            yE = param_series["E"]
+            axE.plot(iterations, yE, 'o-', color='tab:red', label=param_labels["E"])
+            axE.axhline(patient_vals["E"], linestyle='--', linewidth=2, color='tab:red', label='Patient E')
+            axE.set(title=f'Elastic Modulus vs Iterations - {vessel}', xlabel='Iterations',
+                    ylabel='Elastic modulus [Pa]')
+            axE.grid(True)
+            axE.legend()
+            plot_path_E = os.path.join(plots_dir, f"{vessel}_plot_E_only")
+            figE.savefig(f"{plot_path_E}.png", dpi=300)
+            figE.savefig(f"{plot_path_E}.svg")
+            with open(f"{plot_path_E}.pkl", "wb") as f:
+                pickle.dump(figE, f)
+            plt.close(figE)
+            print(f"Saved: {plot_path_E}.png, .svg, .pkl")
 
-        ax1.set(title=f'Parameters vs Iterations - {vessel}', xlabel='Iterations', ylabel='Parameter Values')
-        ax2.set_ylabel('Elastic modulus', color='tab:red')
-        ax1.grid(True)
-
-        lines, labels = ax1.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax1.legend(lines + lines2, labels + labels2, loc='best')
-
-        plot_path = os.path.join(plots_dir, f"{vessel}_plot")
-        fig1.savefig(f"{plot_path}.png", dpi=300)
-        fig1.savefig(f"{plot_path}.svg")
-        with open(f"{plot_path}.pkl", "wb") as f:
-            pickle.dump(fig1, f)
-        plt.close(fig1)
-        print(f"Saved: {plot_path}.png, .svg, .pkl")
-
-        # Plot: diferenças relativas
+        # Plot diferenças relativas (todos juntos, inclusive E)
         fig2, ax2 = plt.subplots(figsize=(10, 6))
         for p in valid_params:
             vals = np.array(param_series[p])
             ref = patient_vals[p]
             diff = (vals - ref) / ref
             ax2.plot(iterations, diff, marker='o', label=param_labels.get(p, p))
-
         ax2.axhline(0, color='gray', linestyle='--', linewidth=1)
-        ax2.set(title=f'Relative Difference of Parameters - {vessel}',
-                xlabel='Iterations', ylabel='Relative Difference')
+        ax2.set(title=f'Relative Difference of Parameters - {vessel}', xlabel='Iterations', ylabel='Relative Difference')
         ax2.grid(True)
         ax2.legend()
-
         rel_diff_path = os.path.join(plots_dir, f"{vessel}_relative_diff_plot")
         fig2.savefig(f"{rel_diff_path}.png", dpi=300)
         fig2.savefig(f"{rel_diff_path}.svg")
@@ -1062,24 +1077,33 @@ class OPENBF_Jacobian:
             pickle.dump(fig2, f)
         plt.close(fig2)
         print(f"Saved: {rel_diff_path}.png, .svg, .pkl")
-    
 
-    def plot_iter_global(self, data_dir, knumber_max):
-        """Plots parameter values and relative differences versus iterations, compared to patient parameters."""
+
+    def plot_iter_global(self, delta_dict, data_dir, knumber_max):
+        """Plots parameters with delta ≠ 0 and their relative differences for each vessel. The parameter E is plotted separately."""
 
         plt.close('all')
 
         vessels = ["vase1", "vase2", "vase3"]
         titles = ["Vessel 1", "Vessel 2", "Vessel 3"]
-        parameters = ["h0", "L", "R0"]
-        num_params_per_vessel = len(parameters)
+        all_parameters = ["h0", "L", "R0", "E", "Rp", "Rd"]
+        param_labels = {
+            "h0": "h0 - Wall thickness [m]",
+            "L": "L - Length [m]",
+            "R0": "R0 - Lumen radius [m]",
+            "E": "E - Elastic modulus [Pa]",
+            "Rp": "Rp - Proximal radius [m]",
+            "Rd": "Rd - Distal radius [m]"
+        }
+
+        valid_params = [p for p in all_parameters if delta_dict.get(p, 0) != 0]
+        num_params_per_vessel = len(valid_params)
 
         patient_parameters = "Pm"
         patient_yaml = "problema_inverso - Paciente.yaml"
-        self.Pdk("global", patient_parameters, patient_yaml)
+        self.Pdk(delta_dict, patient_parameters, patient_yaml)
 
-        # Load patient parameters (stacked)
-        patient_stacked_file = os.path.join(openBF_dir, patient_parameters, "Pdk_stacked.last")
+        patient_stacked_file = os.path.join(self.openBF_dir, patient_parameters, "Pdk_stacked.last")
         if not os.path.isfile(patient_stacked_file):
             print(f"Error: Patient stacked parameters file not found at {patient_stacked_file}")
             return
@@ -1091,92 +1115,100 @@ class OPENBF_Jacobian:
         for i, (vessel, title) in enumerate(zip(vessels, titles)):
             plt.close('all')
 
-            # Initialize parameter value lists
-            h0_list, L_list, R0_list = [], [], []
-
-            # Folder list
             folders = ['Pd0'] + [f'optimized_parameters_Pd{j}' for j in range(1, knumber_max + 1)]
 
-            for folder in folders:
-                stacked_file = os.path.join(openBF_dir, folder, "Pdk_stacked.last")
+            param_series = {p: [] for p in valid_params}
+            patient_vals = {p: patient_data[i * num_params_per_vessel + all_parameters.index(p)]
+                            for p in valid_params}
 
+            for folder in folders:
+                stacked_file = os.path.join(self.openBF_dir, folder, "Pdk_stacked.last")
                 if os.path.isfile(stacked_file):
                     stacked_data = np.loadtxt(stacked_file).flatten()
                     start_idx = i * num_params_per_vessel
                     end_idx = start_idx + num_params_per_vessel
-                    vessel_params = stacked_data[start_idx:end_idx]
-
-                    h0_list.append(vessel_params[0])
-                    L_list.append(vessel_params[1])
-                    R0_list.append(vessel_params[2])
+                    if end_idx > len(stacked_data):
+                        print(f"Error: Stacked data too short for vessel {vessel}.")
+                        return
+                    vessel_data = stacked_data[start_idx:end_idx]
+                    for p in valid_params:
+                        idx = all_parameters.index(p)
+                        param_series[p].append(vessel_data[idx])
                 else:
                     print(f"Error: File not found at {stacked_file}")
                     return
 
-            # Get patient values
-            start_idx = i * num_params_per_vessel
-            end_idx = start_idx + num_params_per_vessel
-            h0_patient, L_patient, R0_patient = patient_data[start_idx:end_idx]
+            iterations = np.arange(len(folders))
 
-            # Convert to numpy for computation
-            h0_array = np.array(h0_list)
-            L_array = np.array(L_list)
-            R0_array = np.array(R0_list)
+            # Separa E dos demais
+            params_main = [p for p in valid_params if p != "E"]
+            has_E = "E" in valid_params
 
-            # Compute relative differences
-            diff_h0 = (h0_array - h0_patient) / h0_patient
-            diff_L = (L_array - L_patient) / L_patient
-            diff_R0 = (R0_array - R0_patient) / R0_patient
+            # Plot absoluto (sem E)
+            if params_main:
+                fig1, ax1 = plt.subplots(figsize=(10, 6))
+                for p in params_main:
+                    y = param_series[p]
+                    label = param_labels.get(p, p)
+                    line, = ax1.plot(iterations, y, 'o-', label=label)
+                    ax1.axhline(patient_vals[p], linestyle='--', linewidth=2, color=line.get_color(), label=f'Patient {p}')
+                ax1.set(title=f'Parameters vs Iterations - {title}', xlabel='Iterations', ylabel='Parameter Values')
+                ax1.grid(True)
+                ax1.legend()
+                plot_path = os.path.join(plots_dir, f"{vessel}_plot_all_params")
+                fig1.savefig(f"{plot_path}.png", dpi=300)
+                fig1.savefig(f"{plot_path}.svg")
+                with open(f"{plot_path}.pkl", "wb") as f:
+                    pickle.dump(fig1, f)
+                plt.close(fig1)
+                print(f"Saved: {plot_path}.png, .svg, .pkl")
 
-            iterations = np.arange(len(h0_list))
+            # Absolute plot to parameter "E"
+            if has_E:
+                figE, axE = plt.subplots(figsize=(10, 6))
 
-            # Plot: Absolute parameter values
-            fig1, ax1 = plt.subplots(figsize=(10, 6))
+                # Força o uso de valores absolutos no eixo Y (sem notação científica)
+                from matplotlib.ticker import ScalarFormatter
+                formatter = ScalarFormatter(useMathText=False)
+                formatter.set_scientific(False)
+                axE.yaxis.set_major_formatter(formatter)
+                axE.ticklabel_format(style='plain', axis='y')
 
-            ax1.plot(iterations, h0_list, 'o-', label='h0 - Wall thickness')
-            ax1.plot(iterations, L_list, 's-', label='L - Length')
-            ax1.plot(iterations, R0_list, '^-', label='R0 - Lumen radius')
+                y = param_series["E"]
+                axE.plot(iterations, y, 'o-', color='tab:red', label=param_labels["E"])
+                axE.axhline(patient_vals["E"], linestyle='--', linewidth=2, color='tab:red', label='Patient E')
 
-            ax1.axhline(h0_patient, color='tab:blue', linestyle='--', linewidth=2, label='Patient h0')
-            ax1.axhline(L_patient, color='tab:orange', linestyle='--', linewidth=2, label='Patient L')
-            ax1.axhline(R0_patient, color='tab:green', linestyle='--', linewidth=2, label='Patient R0')
+                axE.set(title=f'Elastic Modulus vs Iterations - {title}',
+                        xlabel='Iterations', ylabel='Elastic modulus [Pa]')
+                axE.grid(True)
+                axE.legend()
 
-            ax1.set(title=f'Parameters vs Iterations - {title}', xlabel='Iterations', ylabel='Parameter Values')
-            ax1.grid(True)
-            ax1.legend()
+                plot_path_E = os.path.join(plots_dir, f"{vessel}_plot_E_only")
+                figE.savefig(f"{plot_path_E}.png", dpi=300)
+                figE.savefig(f"{plot_path_E}.svg")
+                with open(f"{plot_path_E}.pkl", "wb") as f:
+                    pickle.dump(figE, f)
+                plt.close(figE)
+                print(f"Saved: {plot_path_E}.png, .svg, .pkl")
 
-            plot_path1 = os.path.join(plots_dir, f"{vessel}_plot")
-            fig1.savefig(f"{plot_path1}.png", dpi=300)
-            fig1.savefig(f"{plot_path1}.svg")
-            with open(f"{plot_path1}.pkl", "wb") as f:
-                pickle.dump(fig1, f)
-            plt.close(fig1)
-
-            print(f"Saved: {plot_path1}.png, .svg, .pkl")
-
-            # Plot: Relative differences
+            # Plot diferenças relativas
             fig2, ax2 = plt.subplots(figsize=(10, 6))
-
-            ax2.plot(iterations, diff_h0, 'o-', label='h0 - Wall thickness')
-            ax2.plot(iterations, diff_L, 's-', label='L - Length')
-            ax2.plot(iterations, diff_R0, '^-', label='R0 - Lumen radius')
-
+            for p in valid_params:
+                vals = np.array(param_series[p])
+                ref = patient_vals[p]
+                diff = (vals - ref) / ref
+                ax2.plot(iterations, diff, marker='o', label=param_labels.get(p, p))
             ax2.axhline(0, color='gray', linestyle='--', linewidth=1)
-
-            ax2.set(title=f'Relative Parameter Difference - {title}',
-                    xlabel='Iterations', ylabel='Relative Difference')
+            ax2.set(title=f'Relative Parameter Difference - {title}', xlabel='Iterations', ylabel='Relative Difference')
             ax2.grid(True)
             ax2.legend()
-
-            plot_path2 = os.path.join(plots_dir, f"{vessel}_relative_diff_plot")
-            fig2.savefig(f"{plot_path2}.png", dpi=300)
-            fig2.savefig(f"{plot_path2}.svg")
-            with open(f"{plot_path2}.pkl", "wb") as f:
+            rel_diff_path = os.path.join(plots_dir, f"{vessel}_relative_diff_all_params")
+            fig2.savefig(f"{rel_diff_path}.png", dpi=300)
+            fig2.savefig(f"{rel_diff_path}.svg")
+            with open(f"{rel_diff_path}.pkl", "wb") as f:
                 pickle.dump(fig2, f)
             plt.close(fig2)
-
-            print(f"Saved: {plot_path2}.png, .svg, .pkl")
-
+            print(f"Saved: {rel_diff_path}.png, .svg, .pkl")
 
 
     def file_openBF(self, func_type, yaml_file, output_folder_name):
@@ -1196,7 +1228,7 @@ class OPENBF_Jacobian:
         variables = ["P", "u"]
 
         if func_type == "vase1" or func_type == "vase2" or func_type == "vase3":
-            # Stack openBF outputs for each vessel individually
+            # Stack openBF outputs for each vessel individually #passo essa parte para fora do if??
             # Plots the simulation output graphs and saves them
             for vessel in vessels:
                 self.stack_last_files(vessel, variables, file_dir)
@@ -1233,7 +1265,6 @@ class OPENBF_Jacobian:
         # Stacking order of vessels and variables
         vessels = ["vase1", "vase2", "vase3"]
         variables = ["P", "u"]
-        parameters = ["h0", "L", "R0"]
 
         if func_type == "vase1" or func_type == "vase2" or func_type == "vase3":
 
@@ -1268,10 +1299,15 @@ class OPENBF_Jacobian:
             # Plots the simulation output graphs and saves them
             #self.plot_openBF(updated_dir)
 
-    def iteration_simple(self, knumber, vessel, alpha, add_h0, add_L, add_R0):
+    def iteration_simple(self, knumber, vessel, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E):
         """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
         multiplies it to the y_til matrix and generates the optimized parameters."""
-        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0}
+        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E}
+        func_type = vessel
+
+        # Filters parameters with delta != 0
+        valid_parameters = [param for param in add_values if add_values[param] != 0]
+        print (f"The valid parameters are: {valid_parameters}.")
 
         if knumber == 0:
             k_yaml_file = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
@@ -1284,7 +1320,7 @@ class OPENBF_Jacobian:
             # Runs openBF to 0-iteration YAML file
             self.file_openBF(vessel, k_yaml_file, f"y{knumber} - openBF output iteration {knumber}")
 
-        for parameter in add_values:
+        for parameter in valid_parameters:
             func_type = vessel
             self.updated_openBF(func_type, knumber, vessel, parameter, add_values[parameter])
 
@@ -1297,7 +1333,7 @@ class OPENBF_Jacobian:
             yaml_file = "problema_inverso - k=0.yaml"
             param_directory = "Pd0"
 
-            self.Pdk(vessel, param_directory, yaml_file)
+            self.Pdk(vessel, add_values, param_directory, yaml_file)
 
         # Creates the pseudoinverse matrix
         self.pseudoinverse_matrix_simple(vessel)
@@ -1318,17 +1354,17 @@ class OPENBF_Jacobian:
             print(f"Error: File {base_yaml_path} not found.")
             return
 
-        self.update_yaml_with_optimized_parameters_simple(vessel, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
+        self.update_yaml_with_optimized_parameters_simple(vessel, add_values, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
 
         # Runs openBF to the new/optimized yaml file
         self.file_openBF(vessel, opt_output_yaml_path, f"y{knumber+1} - openBF output iteration {knumber+1}")
 
 
-    def iteration_global(self, knumber, add_h0, add_L, add_R0):
+    def iteration_global(self, knumber, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E):
         """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
         multiplies it to the y_tilde matrix and generates the optimized parameters."""
         func_type = "global" 
-        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0}
+        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E}
         vessels = ["vase1", "vase2", "vase3"]
 
         if knumber == 0:
@@ -1360,7 +1396,7 @@ class OPENBF_Jacobian:
             yaml_file = "problema_inverso - k=0.yaml"
             param_directory = "Pd0"
 
-            self.Pdk(func_type, param_directory, yaml_file)
+            self.Pdk(func_type, add_values, param_directory, yaml_file)
 
         # Pseudoinverse
         self.pseudoinverse_matrix_global()
@@ -1381,9 +1417,9 @@ class OPENBF_Jacobian:
         self.file_openBF(func_type, opt_output_yaml_path, f"y{knumber + 1} - openBF output iteration {knumber + 1}")
 
 
-    def search_opt(self, func_type, alpha, add_h0, add_L, add_R0, knumber_max):
+    def search_opt(self, func_type, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max):
 
-        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0}
+        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E}
 
         # Starts chronometer
         start = time.time()
@@ -1393,7 +1429,7 @@ class OPENBF_Jacobian:
 
             # Runs iteration for k from 0 to knumber_max
             for knumber in range(0, knumber_max + 1):
-                self.iteration_simple(knumber, vase, alpha, add_h0, add_L, add_R0)
+                self.iteration_simple(knumber, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E)
 
             # Plots RMSE for k from 0 to knumber_max
             self.plot_RMSE_simple(vase, openBF_dir, knumber_max)
@@ -1403,13 +1439,13 @@ class OPENBF_Jacobian:
         else:
             # Runs iteration for k from 0 to knumber_max
             for knumber in range(0, knumber_max + 1):
-                self.iteration_global(knumber, add_h0, add_L, add_R0)
+                self.iteration_global(knumber, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E)
 
             # Plots RMSE for k from 0 to knumber_max
             self.plot_RMSE_global(openBF_dir, knumber_max)
 
             # Plots the parameters for each iteration
-            self.plot_iter_global(openBF_dir, knumber_max)
+            self.plot_iter_global(add_values, openBF_dir, knumber_max)
 
         # Ends chronometer and prints time
         end = time.time()
@@ -1422,15 +1458,15 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2/problema_inverso - Paciente.yaml"
-    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2/problema_inverso - k=0.yaml"
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2"
+    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_teste_simple_WIP/problema_inverso - Paciente.yaml"
+    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_teste_simple_WIP/problema_inverso - k=0.yaml"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_teste_simple_WIP"
 
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
     # Runs openBF to patient file
-    #updater.file_openBF(func_type, patient_file, "ym - openBF output paciente")
+    #updater.file_openBF("vase1", patient_file, "ym - openBF output paciente")
 
     # Searches optimized parameters
     alpha = 0.3
-    updater.search_opt("vase2", alpha, 0.00001,0.0001, 0.0001, 20)
+    updater.search_opt("vase3", alpha, 0.00001, 0.0001, 0.0001, 0, 0, 10, 3)
