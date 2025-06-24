@@ -212,7 +212,7 @@ class OPENBF_Jacobian:
         for vase in vessels:
             for var in variables:
                 file_path = os.path.join(data_dir, f"{vase}_{var}.last")
-                df = pd.read_csv(file_path, sep='\s+', header=None)
+                df = pd.read_csv(file_path, delim_whitespace=True, header=None)
                 df.columns = ["Time", "Length 1", "Length 2", "Length 3", "Length 4", "Length 5"]
                 data[var].append(df)
 
@@ -264,7 +264,7 @@ class OPENBF_Jacobian:
         # Filters parameters with delta != 0
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
 
-        global_columns = []  # Lista final com as 9 coluna
+        global_columns = []  
 
         for vessel in vessels:
             for param in valid_parameters:
@@ -283,12 +283,12 @@ class OPENBF_Jacobian:
                         print(f"Error: Partial derivative matrix {file_path} has only 1 dimension.")
                         return
 
-                    col = matrix[:, 3].reshape(-1, 1)  # Pega a quarta coluna
-                    global_columns.append(col)  # Agora cada coluna → derivada de 1 vaso + 1 param
+                    col = matrix[:, 3].reshape(-1, 1)  # Gets the 4th column
+                    global_columns.append(col) 
                 else:
                     raise FileNotFoundError(f"Missing file: {file_path}")
 
-        # Empilha todas as colunas horizontalmente → shape: (600,9)
+        # Stacks all columns horizontally, shape: (600,j)
         J_global = np.hstack(global_columns)
 
         output_file = os.path.join(self.openBF_dir, "jacobian_global.last")
@@ -432,8 +432,6 @@ class OPENBF_Jacobian:
 
 
     def optimized_parameters_global(self, knumber, alpha):
-        vessels = ["vase1", "vase2", "vase3"]
-        parameters = ["h0", "L", "R0"]
 
         # Load pseudoinverse
         pseudo_inv_path = os.path.join(openBF_dir, "pseudoinv_matrix.last")
@@ -749,7 +747,6 @@ class OPENBF_Jacobian:
         # Stacking order of vessels and variables
         vessels = ["vase1", "vase2", "vase3"]
         variables = ["P", "u"]
-        parameters = ["h0", "L", "R0"]
 
         # Stack openBF outputs for each vessel individually
         for vessel in vessels:
@@ -774,6 +771,7 @@ class OPENBF_Jacobian:
         # Where the k_file output files are
         base_dir = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}")
         os.makedirs(base_dir, exist_ok=True)
+
         # Where the updated_file output files will be
         updated_dir = os.path.join(openBF_dir, f"openBF_updated_{parameter}_{vase}")
         os.makedirs(updated_dir, exist_ok=True)
