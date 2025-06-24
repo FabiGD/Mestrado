@@ -179,7 +179,7 @@ class OPENBF_Jacobian:
         # Reads files and store in dictionary
         for var in variables:
             file_path = os.path.join(data_dir, f"{vessel}_{var}.last")
-            df = pd.read_csv(file_path, sep='\s+', header=None)
+            df = pd.read_csv(file_path, delim_whitespace=True, header=None)
             df.columns = ["Time", "Length 1", "Length 2", "Length 3", "Length 4", "Length 5"]
             data[var].append(df)
 
