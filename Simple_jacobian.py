@@ -40,7 +40,10 @@ class OPENBF_Jacobian:
         updated_file = os.path.join(openBF_dir, f"updated_{parameter}.yaml")
 
         # Loads YAML from k_file
-        k_file = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
+        if knumber == 0:
+            k_file = os.path.join(openBF_dir, self.k0_file)
+        else:
+            k_file = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
         with open(k_file, "r", encoding="utf-8") as f:
             yaml_data = yaml.safe_load(f) or {}
 
@@ -756,7 +759,7 @@ class OPENBF_Jacobian:
         print (f"The valid parameters are: {valid_parameters}.")
 
         if knumber == 0:
-            k_yaml_file = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
+            k_yaml_file = os.path.join(openBF_dir, self.k0_file)
 
             # Checks if file exists
             if not os.path.exists(k_yaml_file):
@@ -775,7 +778,7 @@ class OPENBF_Jacobian:
 
         # Creates the Pd0 matrix (parameters of the k-iteration yaml)
         if knumber == 0:
-            yaml_file = "problema_inverso - k=0.yaml"
+            yaml_file = self.k0_file
             param_directory = "Pd0"
 
             self.Pdk(vase, add_values, param_directory, yaml_file)
@@ -790,7 +793,10 @@ class OPENBF_Jacobian:
         self.optimized_parameters(vase, alpha, knumber)
 
         # Updates YAML with optimized parameters
-        base_yaml_path = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
+        if knumber == 0:
+            base_yaml_path = os.path.join(openBF_dir, self.k0_file)
+        else:
+            base_yaml_path = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
         opt_param_files_dir = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber+1}")
         opt_output_yaml_path = os.path.join(openBF_dir, f"problema_inverso - k={knumber+1}.yaml")
 
@@ -833,9 +839,9 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3/problema_inverso - Paciente.yaml"
-    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3/problema_inverso - k=0.yaml"
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3"
+    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1/problema_inverso - Paciente.yaml"
+    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1/problema_inverso - k=0 - fixed_vessels_2and3.yaml"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1"
 
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
@@ -845,4 +851,4 @@ if __name__ == "__main__":
     # Searches optimized parameters
     # search_opt(self, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     alpha = 0.3
-    updater.search_opt("vase3", alpha, 0.00001,0.0001, 0.0001, 0, 0, 0, 20)
+    updater.search_opt("vase1", alpha, 0.00001,0.0001, 0.0001, 0, 0, 0, 20)
