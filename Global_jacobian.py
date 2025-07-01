@@ -40,7 +40,10 @@ class OPENBF_Jacobian:
         updated_file = os.path.join(openBF_dir, f"updated_{parameter}_{vase}.yaml")
 
         # Loads YAML from k_file
-        k_file = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
+        if knumber == 0:
+            k_file = os.path.join(openBF_dir, self.k0_file)
+        else:
+            k_file = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
         with open(k_file, "r", encoding="utf-8") as f:
             yaml_data = yaml.safe_load(f) or {}
 
@@ -805,7 +808,7 @@ class OPENBF_Jacobian:
         print (f"The valid parameters are: {valid_parameters}.")
 
         if knumber == 0:
-            k_yaml_file = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
+            k_yaml_file = os.path.join(openBF_dir, self.k0_file)
 
             # Checks if file exists
             if not os.path.exists(k_yaml_file):
@@ -830,7 +833,7 @@ class OPENBF_Jacobian:
 
         # Creates the Pd0 matrix (parameters of the k-iteration yaml)
         if knumber == 0:
-            yaml_file = "problema_inverso - k=0.yaml"
+            yaml_file = self.k0_file
             param_directory = "Pd0"
 
             self.Pdk(add_values, param_directory, yaml_file)
@@ -846,7 +849,10 @@ class OPENBF_Jacobian:
         self.optimized_parameters_global(knumber, alpha)
 
         # Atualiza YAML
-        base_yaml_path = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
+        if knumber == 0:
+            base_yaml_path = os.path.join(openBF_dir, self.k0_file)
+        else:
+            base_yaml_path = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
         opt_param_files_dir = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber + 1}")
         opt_output_yaml_path = os.path.join(openBF_dir, f"problema_inverso - k={knumber + 1}.yaml")
         self.update_yaml_with_optimized_parameters(add_values, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
