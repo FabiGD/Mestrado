@@ -299,43 +299,61 @@ class OPENBF_Jacobian:
         print(f"Global Jacobian saved in: {output_file}, shape: {J_global.shape}")
 
 
-
-    def pseudoinverse_matrix(self):
+    def pseudoinverse_matrix(self, knumber):
         """ Creates the pseudoinverse_matrix using the Jacobian matrix and saves it in the folder: "jacobians_pseudoinverse"."""
 
+        output_dir = os.path.join(openBF_dir, "jacobians_pseudoinverse")
+        os.makedirs(output_dir, exist_ok=True)  # Creates the folder if it does not exist
+
         file_path = os.path.join(openBF_dir, f"jacobian_global.last")
+        print_path = os.path.join(openBF_dir, "jacobians_pseudoinverse", f"condition_k{knumber}.txt")
 
         if os.path.exists(file_path):
             Jk = np.loadtxt(file_path)  # Loads the Jacobian matrix
             JkT_Jk = Jk.T @ Jk  # Jacobian transpose times the Jacobian
+            beta = 1e-2 # apagar: a partir de 1e12 (1e14 para beta = 1e-3 * np.linalg.norm(JkT_Jk))
+            Jk_beta = JkT_Jk + beta * np.eye(JkT_Jk.shape[0]) # To regularize the condition number of the inverse matrix
 
             # Checks if it is invertible
             # Calculates the conditional number
             cond_matrix = np.linalg.cond(JkT_Jk)
             cond_Jk = np.linalg.cond(Jk)
+            cond_beta = np.linalg.cond(Jk_beta)
 
             # Sets a threshold to consider "non-invertible"
             threshold = 1e6
 
-            print(f"Conditional number of the Jk matrix: {cond_Jk:.2e}")
+            # Checks the condition number of matrices
+            matrices = [
+                (cond_Jk, f"Jk matrix"),
+                (cond_matrix, f"JkT@Jk matrix"),
+                (cond_beta, f"(JkT@Jk + beta * I) matrix")
+            ]
 
-            if cond_Jk < threshold:
-                print("The Jk matrix is invertible.")
-            else:
-                print("Error: The Jk matrix is quasi-singular or non-invertible.")
+            # Prints and saves in a file the condition number and the status of the matrices
+            os.makedirs(os.path.dirname(print_path), exist_ok=True)
 
-            print(f"Conditional number of the inverse matrix: {cond_matrix:.2e}")
-
-            if cond_matrix < threshold:
-                print("The JkT@Jk matrix is invertible.")
-            else:
-                print("Error: The JkT@Jk matrix is quasi-singular or non-invertible.")
+            with open(print_path, "w") as log:
+                for cond, desc in matrices:
+                    msg_cond = f"{desc} condition number: {cond:.2e}"
+                    msg_status = (
+                        f"The {desc} is invertible."
+                        if cond < threshold
+                        else f"Error: The {desc} is quasi-singular or non-invertible."
+                    )
+                    print(msg_cond)
+                    print(msg_status)
+                    log.write(msg_cond + "\n")
+                    log.write(msg_status + "\n")
+                    log.write("\n")
+                print(f"beta = {beta}")
+                log.write(f"beta = {beta} \n")
 
             # Calculates the pseudoinverse matrix
-            JkT_Jk_inv = np.linalg.inv(JkT_Jk)
-            pseudoinv = JkT_Jk_inv @ Jk.T
+            inv_matrix = np.linalg.inv(Jk_beta)
+            pseudoinv = inv_matrix @ Jk.T
 
-            output_file = os.path.join(openBF_dir, f"pseudoinv_matrix.last")
+            output_file = os.path.join(output_dir, f"pseudoinv_matrix.txt")
             np.savetxt(output_file, pseudoinv, fmt="%.14e")
             print(f"Pseudoinverse matrix saved in: {output_file}")
 
@@ -839,7 +857,7 @@ class OPENBF_Jacobian:
             self.Pdk(add_values, param_directory, yaml_file)
 
         # Pseudoinverse
-        self.pseudoinverse_matrix()
+        self.pseudoinverse_matrix(knumber)
 
         # liberar depois
         # y_tilde
@@ -901,4 +919,3 @@ if __name__ == "__main__":
     #search_opt(self, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     alpha = 0.3
     updater.search_opt(alpha, 0.00001, 0.0001, 0.0001, 0, 0, 0, 20)
-
