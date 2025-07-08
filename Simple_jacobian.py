@@ -267,7 +267,7 @@ class OPENBF_Jacobian:
             np.savetxt(output_file, stacked_matrix, fmt="%.14e")
             print(f"Stacked matrix saved in: {output_file}")
 
-    def pseudoinverse_matrix(self, vessel, knumber):
+    def pseudoinverse_matrix(self, vessel, knumber, valid_parameters):
         """ Creates the pseudoinverse_matrix using the Jacobian matrix and saves it in the folder: "jacobians_pseudoinverse"."""
 
         file_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_{vessel}_stacked.txt")
@@ -276,8 +276,26 @@ class OPENBF_Jacobian:
         if os.path.exists(file_path):
             Jk = np.loadtxt(file_path) # Loads the Jacobian matrix
             JkT_Jk = Jk.T @ Jk # Jacobian transpose times the Jacobian
-            beta = 1e-8 # apagar: a partir de 1e12 (1e14 para beta = 1e-3 * np.linalg.norm(JkT_Jk))
-            Jk_beta = JkT_Jk + beta * np.eye(JkT_Jk.shape[0]) # To regularize the condition number of the inverse matrix
+
+            # Define the regularization weights for each parameter
+            weights = {
+                "H0": 1.0,
+                "L": 1e-4,
+                "R0": 1e-2,
+                "Rp": 1e-2,
+                "Rd": 1e-2,
+                "E": 1e-14
+            }
+
+            # Create the diagonal matrix D based on the valid_parameters order
+            D_values = [weights.get(param, 1.0) for param in valid_parameters]
+            D = np.diag(D_values)
+            print("Diagonal matrix D:")
+            print(D)
+
+            # Regularizing the condition number of the inverse matrix
+            beta = 1e2 # apagar: a partir de 1e12 (1e14 para beta = 1e-3 * np.linalg.norm(JkT_Jk))
+            Jk_beta = JkT_Jk + beta * D 
 
             # Checks if it is invertible
             # Calculates the condition number
@@ -315,7 +333,7 @@ class OPENBF_Jacobian:
                 log.write(f"beta = {beta} \n")
 
             # Calculates the pseudoinverse matrix
-            inv_matrix = np.linalg.inv(Jk_beta)
+            inv_matrix = np.linalg.pinv(Jk_beta)
             pseudoinv = inv_matrix @ Jk.T
 
             output_dir = os.path.join(openBF_dir, "jacobians_pseudoinverse")
@@ -800,7 +818,7 @@ class OPENBF_Jacobian:
             self.Pdk(vase, add_values, param_directory, yaml_file)
 
         # Creates the pseudoinverse matrix
-        self.pseudoinverse_matrix(vase, knumber)
+        self.pseudoinverse_matrix(vase, knumber, valid_parameters)
 
         # Creates the y_tilde matrix
         self.y_tilde(vase, knumber)
@@ -850,6 +868,8 @@ class OPENBF_Jacobian:
         print(f"Elapsed time: {minutes:.3f} minutes.")
 
 
+
+
 # Application
 if __name__ == "__main__":
 
@@ -865,4 +885,5 @@ if __name__ == "__main__":
     # Searches optimized parameters
     # search_opt(self, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     alpha = 0.3
-    updater.search_opt("vase1", alpha, 0.00001, 0.0001, 0.0001, 0, 0, 0, 20)
+    updater.search_opt("vase1", alpha, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+
