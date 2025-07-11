@@ -352,22 +352,20 @@ class OPENBF_Jacobian:
         # Loads the data from the patient openBF output - ym
         patient_output = os.path.join(openBF_dir, f"ym - openBF output paciente", f"{vessel}_stacked.last")
 
-        if os.path.exists(patient_output):
-            data = np.loadtxt(patient_output)
-            patient_data = data[:, 3].reshape(-1, 1) # Pego apenas o 3° nó
-        else:
-            print(f"Error: Patient output file not found - {patient_output}.")
-            return
+        if not os.path.exists(patient_output):
+            raise SystemExit(f"Error: Patient output file not found - {patient_output}")
+
+        data = np.loadtxt(patient_output)
+        patient_data = data[:, 3].reshape(-1, 1) # Only takes the 3rd knot
 
         # Loads the simulation output corresponding to the guess
         yk_output = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
 
-        if os.path.exists(yk_output):
-            data = np.loadtxt(yk_output)
-            yk_data = data[:, 3].reshape(-1, 1)  # Pego apenas o 3° nó
-        else:
-            print(f"Error: Iteration output file not found - {yk_output}.")
-            return
+        if not os.path.exists(yk_output):
+            raise SystemExit(f"Error: Output file for iteration {knumber} not found - {yk_output}")
+
+        data = np.loadtxt(yk_output)
+        yk_data = data[:, 3].reshape(-1, 1)  # Only takes the 3rd knot
 
         y_tilde = patient_data - yk_data
 
@@ -873,9 +871,9 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2/problema_inverso - Paciente.yaml"
-    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2/problema_inverso - k=0 - fixed_vessels_1and3.yaml"
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2"
+    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3/problema_inverso - Paciente.yaml"
+    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3/problema_inverso - k=0 - fixed_vessels_1and2.yaml"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3"
 
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
@@ -889,4 +887,4 @@ if __name__ == "__main__":
     beta_values = 10.0 ** exponents
     alpha = 0.3
     for beta in beta_values:
-        updater.search_opt("vase2", alpha, beta, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+        updater.search_opt("vase3", alpha, beta, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
