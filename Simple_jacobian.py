@@ -267,11 +267,11 @@ class OPENBF_Jacobian:
             np.savetxt(output_file, stacked_matrix, fmt="%.14e")
             print(f"Stacked matrix saved in: {output_file}")
 
-    def pseudoinverse_matrix(self, vessel, knumber, valid_parameters):
+    def pseudoinverse_matrix(self, beta, vessel, knumber, valid_parameters):
         """ Creates the pseudoinverse_matrix using the Jacobian matrix and saves it in the folder: "jacobians_pseudoinverse"."""
 
         file_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_{vessel}_stacked.txt")
-        print_path = os.path.join(openBF_dir, "jacobians_pseudoinverse", f"condition_{vessel}_k{knumber}.txt")
+        print_path = os.path.join(openBF_dir, f"jacobians_pseudoinverse_beta={beta}", f"condition_{vessel}_k{knumber}.txt")
 
         if os.path.exists(file_path):
             Jk = np.loadtxt(file_path) # Loads the Jacobian matrix
@@ -294,7 +294,7 @@ class OPENBF_Jacobian:
             print(D)
 
             # Regularizing the condition number of the inverse matrix
-            beta = 1e2 # apagar: a partir de 1e12 (1e14 para beta = 1e-3 * np.linalg.norm(JkT_Jk))
+            #beta = 1e1 # apagar: a partir de 1e12 (1e14 para beta = 1e-3 * np.linalg.norm(JkT_Jk))
             Jk_beta = JkT_Jk + beta * D 
 
             # Checks if it is invertible
@@ -310,7 +310,7 @@ class OPENBF_Jacobian:
             matrices = [
                 (cond_Jk, f"Jk matrix"),
                 (cond_matrix, f"JkT@Jk matrix"),
-                (cond_beta, f"(JkT@Jk + beta * I) matrix")
+                (cond_beta, f"(JkT@Jk + beta * D) matrix")
             ]
 
             # Prints and saves in a file the condition number and the status of the matrices
@@ -336,7 +336,7 @@ class OPENBF_Jacobian:
             inv_matrix = np.linalg.pinv(Jk_beta)
             pseudoinv = inv_matrix @ Jk.T
 
-            output_dir = os.path.join(openBF_dir, "jacobians_pseudoinverse")
+            output_dir = os.path.join(openBF_dir, f"jacobians_pseudoinverse_beta={beta}")
             os.makedirs(output_dir, exist_ok=True)  # Creates the folder if it does not exist
 
             output_file = os.path.join(output_dir, f"pseudoinv_{vessel}.txt")
@@ -452,7 +452,7 @@ class OPENBF_Jacobian:
             return
 
         # Loads the data from the pseudoinverse matrix
-        pseudoinv_path = os.path.join(openBF_dir, "jacobians_pseudoinverse", f"pseudoinv_{vessel}.txt")
+        pseudoinv_path = os.path.join(openBF_dir, f"jacobians_pseudoinverse_beta={beta}", f"pseudoinv_{vessel}.txt")
 
         if os.path.exists(pseudoinv_path):
             pseudoinv_data = np.loadtxt(pseudoinv_path)
@@ -534,7 +534,7 @@ class OPENBF_Jacobian:
 
         print(f"Updated YAML saved in: {output_yaml_path}")
 
-    def plot_RMSE(self, vessel, data_dir, knumber_max=6):
+    def plot_RMSE(self, vessel, beta, data_dir, knumber_max=6):
         # Plots the average RMSE vs. iteration
 
         plt.close('all')
@@ -595,7 +595,7 @@ class OPENBF_Jacobian:
         plt.tight_layout()
 
         # Creates folder for saving plots
-        plots_dir = os.path.join(data_dir, "iteration plots")
+        plots_dir = os.path.join(data_dir, f"iteration_plots_beta={beta}")
         os.makedirs(plots_dir, exist_ok=True)
 
         # Saves plots in .png .svg and .pdf formats
@@ -610,13 +610,13 @@ class OPENBF_Jacobian:
 
         print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
 
-    def plot_iter(self, vessel, delta_dict, data_dir: str, knumber_max: int):
+    def plot_iter(self, vessel, beta, delta_dict, data_dir: str, knumber_max: int):
         """Plota os parâmetros com delta ≠ 0 e suas diferenças relativas em relação ao paciente."""
 
         plt.close('all')
 
         file_template = 'Pdk_{}.last'
-        plots_dir = os.path.join(data_dir, "iteration plots")
+        plots_dir = os.path.join(data_dir, f"iteration_plots_beta={beta}")
         os.makedirs(plots_dir, exist_ok=True)
 
         patient_parameters = "Pm"
@@ -783,7 +783,7 @@ class OPENBF_Jacobian:
         # Plots the simulation output graphs and saves them
         #self.plot_openBF(vessel, updated_dir)
 
-    def iteration(self, knumber, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E):
+    def iteration(self, knumber, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E):
         """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
         multiplies it to the y_tilde matrix and generates the optimized parameters."""
         add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E}
@@ -818,7 +818,7 @@ class OPENBF_Jacobian:
             self.Pdk(vase, add_values, param_directory, yaml_file)
 
         # Creates the pseudoinverse matrix
-        self.pseudoinverse_matrix(vase, knumber, valid_parameters)
+        self.pseudoinverse_matrix(beta, vase, knumber, valid_parameters)
 
         # Creates the y_tilde matrix
         self.y_tilde(vase, knumber)
@@ -845,7 +845,7 @@ class OPENBF_Jacobian:
         self.file_openBF(opt_output_yaml_path, f"y{knumber+1} - openBF output iteration {knumber+1}")
 
 
-    def search_opt(self, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max):
+    def search_opt(self, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max):
 
         add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E}
 
@@ -854,13 +854,13 @@ class OPENBF_Jacobian:
 
         # Runs iteration for k from 0 to knumber_max
         for knumber in range(0, knumber_max + 1):
-            self.iteration(knumber, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E)
+            self.iteration(knumber, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E)
 
         # Plots RMSE for k from 0 to knumber_max
-        self.plot_RMSE(vase, openBF_dir, knumber_max)
+        self.plot_RMSE(vase, beta, openBF_dir, knumber_max)
 
         # Plots the parameters for each iteration
-        self.plot_iter(vase, add_values, openBF_dir, knumber_max)
+        self.plot_iter(vase, beta, add_values, openBF_dir, knumber_max)
 
         # Ends chronometer and prints time
         end = time.time()
@@ -873,9 +873,9 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1/problema_inverso - Paciente.yaml"
-    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1/problema_inverso - k=0 - fixed_vessels_2and3.yaml"
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1"
+    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2/problema_inverso - Paciente.yaml"
+    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2/problema_inverso - k=0 - fixed_vessels_1and3.yaml"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2"
 
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
@@ -884,6 +884,9 @@ if __name__ == "__main__":
 
     # Searches optimized parameters
     # search_opt(self, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
+    
+    exponents = np.arange(-8, 3)  # 3 is exclusive, so it goes up to 2
+    beta_values = 10.0 ** exponents
     alpha = 0.3
-    updater.search_opt("vase1", alpha, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
-
+    for beta in beta_values:
+        updater.search_opt("vase2", alpha, beta, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
