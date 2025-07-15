@@ -267,11 +267,11 @@ class OPENBF_Jacobian:
             np.savetxt(output_file, stacked_matrix, fmt="%.14e")
             print(f"Stacked matrix saved in: {output_file}")
 
-    def pseudoinverse_matrix(self, beta, vessel, knumber, valid_parameters):
-        """ Creates the pseudoinverse_matrix using the Jacobian matrix and saves it in the folder: "jacobians_pseudoinverse"."""
+    def M_matrix(self, beta, vessel, knumber, valid_parameters):
+        """ Creates the M_matrix using the Jacobian matrix and saves it in the folder: "M_matrix_beta={beta}"."""
 
         file_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_{vessel}_stacked.txt")
-        print_path = os.path.join(openBF_dir, f"jacobians_pseudoinverse_beta={beta}", f"condition_{vessel}_k{knumber}.txt")
+        print_path = os.path.join(openBF_dir, f"M_matrix_beta={beta}", f"condition_{vessel}_k{knumber}.txt")
 
         if os.path.exists(file_path):
             Jk = np.loadtxt(file_path) # Loads the Jacobian matrix
@@ -287,7 +287,7 @@ class OPENBF_Jacobian:
                 "E": 1e-14
             }
 
-            # Create the diagonal matrix D based on the valid_parameters order
+            # Creates the diagonal matrix D based on the valid_parameters order
             D_values = [weights.get(param, 1.0) for param in valid_parameters]
             D = np.diag(D_values)
             print("Diagonal matrix D:")
@@ -332,22 +332,27 @@ class OPENBF_Jacobian:
                 print(f"beta = {beta}")
                 log.write(f"beta = {beta} \n")
 
-            # Calculates the pseudoinverse matrix
-            inv_matrix = np.linalg.pinv(Jk_beta)
-            pseudoinv = inv_matrix @ Jk.T
-
-            output_dir = os.path.join(openBF_dir, f"jacobians_pseudoinverse_beta={beta}")
+            # Saves matrix Jk_beta (M matrix)
+            output_dir = os.path.join(openBF_dir, f"M_matrix_beta={beta}")
             os.makedirs(output_dir, exist_ok=True)  # Creates the folder if it does not exist
 
-            output_file = os.path.join(output_dir, f"pseudoinv_{vessel}.txt")
-            np.savetxt(output_file, pseudoinv, fmt="%.14e")
-            print(f"Pseudoinverse matrix saved in: {output_file}")
+            output_file = os.path.join(output_dir, f"Jk_beta_{vessel}.txt")
+            np.savetxt(output_file, Jk_beta, fmt="%.14e")
+            print(f"Jk_beta (M) matrix saved in: {output_file}")
 
         else:
             print(f"Error: File not found - {file_path}.")
             return
 
-    def y_tilde(self, vessel, knumber):
+    def Z_matrix(self, vessel, knumber):
+
+        # Path to the jacobian matrix file
+        file_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_{vessel}_stacked.txt")
+
+        if os.path.exists(file_path):
+            Jk = np.loadtxt(file_path) # Loads the Jacobian matrix
+        else:
+            raise SystemExit(f"Error: Jacobian matrix file not found - {file_path}")
 
         # Loads the data from the patient openBF output - ym
         patient_output = os.path.join(openBF_dir, f"ym - openBF output paciente", f"{vessel}_stacked.last")
@@ -369,14 +374,17 @@ class OPENBF_Jacobian:
 
         y_tilde = patient_data - yk_data
 
-        # Where the y_tilde matrix files will be
-        y_tilde_dir = os.path.join(openBF_dir, "y_tilde")
-        os.makedirs(y_tilde_dir, exist_ok=True)
+        # Creates the Z matriz
+        Z = Jk.T @ y_tilde
+
+        # Where the Z matrix files will be
+        Z_dir = os.path.join(openBF_dir, "Z_matrix")
+        os.makedirs(Z_dir, exist_ok=True)
 
         # Saves the y_tilde matrix in a file
-        y_tilde_file = os.path.join(y_tilde_dir, f"y_tilde_{vessel}.last")
-        np.savetxt(y_tilde_file, y_tilde, fmt="%.14e")
-        print(f"y_tilde matrix saved: {y_tilde_file}")
+        Z_file = os.path.join(Z_dir, f"Z_matrix_{vessel}.last")
+        np.savetxt(Z_file, Z, fmt="%.14e")
+        print(f"Z matrix saved: {Z_file}")
 
     def Pdk(self, vessel, delta_dict, param_directory, yaml_file):
         """Loads the parameters of a yaml file and saves it in a directory."""
@@ -425,7 +433,7 @@ class OPENBF_Jacobian:
         print(f"Parameter vector saved: {Pdk_file}")
 
 
-    def optimized_parameters(self, vessel, alpha, knumber):
+    def optimized_parameters(self, vessel, alpha, beta, knumber):
         """ Obtains the optimized parameters Pdk+1 and saves them in a file.
         
         Parameters:
@@ -449,28 +457,28 @@ class OPENBF_Jacobian:
             print(f"Error: Pdk matrix file not found - {param_path}.")
             return
 
-        # Loads the data from the pseudoinverse matrix
-        pseudoinv_path = os.path.join(openBF_dir, f"jacobians_pseudoinverse_beta={beta}", f"pseudoinv_{vessel}.txt")
+        # Loads the data from the M matrix
+        M_matrix_path = os.path.join(openBF_dir, f"M_matrix_beta={beta}", f"Jk_beta_{vessel}.txt")
 
-        if os.path.exists(pseudoinv_path):
-            pseudoinv_data = np.loadtxt(pseudoinv_path)
+        if os.path.exists(M_matrix_path):
+            M_data = np.loadtxt(M_matrix_path)
         else:
-            print(f"Error: Pseudoinverse matrix file not found - {pseudoinv_path}.")
+            print(f"Error: Pseudoinverse matrix file not found - {M_matrix_path}.")
             return
 
-        # Loads the data from the y_tilde matrix
-        y_tilde_path = os.path.join(openBF_dir, "y_tilde", f"y_tilde_{vessel}.last")
+        # Loads the data from the Z matrix
+        Z_matrix_path = os.path.join(openBF_dir, "Z_matrix", f"Z_matrix_{vessel}.last")
 
-        if os.path.exists(y_tilde_path):
-            y_tilde_data = np.loadtxt(y_tilde_path).reshape(-1, 1)
+        if os.path.exists(Z_matrix_path):
+            Z_data = np.loadtxt(Z_matrix_path).reshape(-1, 1)
 
         else:
-            print(f"Error: y_tilde matrix file not found - {y_tilde_path}.")
+            print(f"Error: Z matrix file not found - {Z_matrix_path}.")
             return
 
         # Creates the optimized parameters (Pd(k+1)) matrix
-        vector_product = pseudoinv_data @ y_tilde_data
-        opt_param_data = param_data + alpha * vector_product
+        P_matrix = np.linalg.solve(M_data,Z_data)
+        opt_param_data = param_data + alpha * P_matrix
 
         # Saves the optimized parameters matrix in a file
         opt_param_file = os.path.join(opt_param_dir, f"Pdk_{vessel}.last")
@@ -508,6 +516,7 @@ class OPENBF_Jacobian:
             new_params = np.loadtxt(param_file)
         else:
             print(f"Error: Parameter file not found - {param_file}. Skipping {vessel}.")
+            return
 
         # Ensures that new_params is a vector (not an array)
         new_params = np.atleast_1d(new_params)
@@ -532,7 +541,7 @@ class OPENBF_Jacobian:
 
         print(f"Updated YAML saved in: {output_yaml_path}")
 
-    def plot_RMSE(self, vessel, beta, data_dir, knumber_max=6):
+    def plot_RMSE(self, vessel, beta, data_dir, knumber_max):
         # Plots the average RMSE vs. iteration
 
         plt.close('all')
@@ -540,7 +549,7 @@ class OPENBF_Jacobian:
 
         for knumber in range(0, knumber_max + 1):
 
-            rmse_totals_k = []  # List to store the total RMSE of each vessel
+            rmse_totals_k = []  # List to store the total RMSE of the vessel
 
             # Files paths
             patient_file = os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last")
@@ -554,31 +563,31 @@ class OPENBF_Jacobian:
                 print(f"Error: File {k_file} not found.")
                 return
 
-            # Loads stacked files ignoring comments
-            patient_data = np.loadtxt(patient_file, comments="#")[:, 1:]  # Ignores the 1st column (time)
-            k_data = np.loadtxt(k_file, comments="#")[:, 1:]
+
+            # Loads stacked files ignoring comments, takes only the 4ª column
+            patient_data = np.loadtxt(patient_file, comments="#")[:, 3]
+            k_data = np.loadtxt(k_file, comments="#")[:, 3]
+
 
             def calculate_rmse(y0, y1):
                 if y0.shape != y1.shape:
                     raise ValueError("The files have different shapes!")
                 error = y0 - y1
-                mse = np.mean(error ** 2, axis=0)  # per column
+                mse = np.mean(error ** 2)
                 rmse = np.sqrt(mse)
                 return rmse
 
-            ## Calculates column-wise RMSE of k output relative to patient output
-            rmse_columns_k = calculate_rmse(patient_data, k_data)
+            # Calculates RMSE of k output relative to patient output
+            rmse_vector = calculate_rmse(patient_data, k_data) 
 
-            # Average RMSE per vessel
-            rmse_total_k = np.mean(rmse_columns_k)
-            rmse_totals_k.append(rmse_total_k)
+            # Average RMSE
+            rmse_total = np.mean(rmse_vector) 
 
-            # Calculation of the mean RMSEs of the 3 vessels for k
-            mean_rmse_vessels_k = np.mean(rmse_totals_k)
-            print(f"### AVERAGE RMSE (k = {knumber} - patient) (3 vessels): {mean_rmse_vessels_k:.6f}")
+            # Prints
+            print(f"### AVERAGE RMSE (patient - k = {knumber}): {rmse_total:.6f}")
 
-            # Stores it
-            rmse_means.append(mean_rmse_vessels_k)
+            # Stores it to plot
+            rmse_means.append(rmse_total)
 
         # Iterations: 0 to knumber_max
         iterations = np.arange(0, knumber_max + 1)
@@ -587,8 +596,8 @@ class OPENBF_Jacobian:
         fig = plt.figure(figsize=(8, 5))
         plt.plot(iterations, rmse_means, marker='o', linestyle='-', color='tab:red')
         plt.xlabel('Iterations')
-        plt.ylabel('Average RMSE (3 vessels)')
-        plt.title('Average RMSE vs Iterations')
+        plt.ylabel('Average RMSE (mid-point)')
+        plt.title(f'Average RMSE vs Iterations - {vessel}')
         plt.grid(True)
         plt.tight_layout()
 
@@ -816,13 +825,13 @@ class OPENBF_Jacobian:
             self.Pdk(vase, add_values, param_directory, yaml_file)
 
         # Creates the pseudoinverse matrix
-        self.pseudoinverse_matrix(beta, vase, knumber, valid_parameters)
+        self.M_matrix(beta, vase, knumber, valid_parameters)
 
         # Creates the y_tilde matrix
-        self.y_tilde(vase, knumber)
+        self.Z_matrix(vase, knumber)
 
         # Creates the optimized parameters matrix
-        self.optimized_parameters(vase, alpha, knumber)
+        self.optimized_parameters(vase, alpha, beta, knumber)
 
         # Updates YAML with optimized parameters
         if knumber == 0:
@@ -871,9 +880,9 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3/problema_inverso - Paciente.yaml"
-    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3/problema_inverso - k=0 - fixed_vessels_1and2.yaml"
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3"
+    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1/problema_inverso - Paciente.yaml"
+    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1/problema_inverso - k=0 - fixed_vessels_2and3.yaml"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1"
 
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
@@ -883,8 +892,8 @@ if __name__ == "__main__":
     # Searches optimized parameters
     # search_opt(self, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     
-    exponents = np.arange(-8, 3)  # 3 is exclusive, so it goes up to 2
+    exponents = np.arange(2, 6)  # 6 is exclusive, so it goes up to 5 (100.000)
     beta_values = 10.0 ** exponents
     alpha = 0.3
     for beta in beta_values:
-        updater.search_opt("vase3", alpha, beta, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+        updater.search_opt("vase1", alpha, beta, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
