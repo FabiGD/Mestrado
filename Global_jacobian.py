@@ -919,3 +919,6 @@ if __name__ == "__main__":
     #search_opt(self, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     alpha = 0.3
     updater.search_opt(alpha, 0.00001, 0.0001, 0.0001, 0, 0, 0, 20)
+
+    # incluir o beta como parametro de search_opt; add a  matriz D; usar o linalg.solve (criar a matriz M e Z); ajustar o def plot_RMSE
+
