@@ -892,7 +892,7 @@ if __name__ == "__main__":
     # Searches optimized parameters
     # search_opt(self, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     
-    exponents = np.arange(2, 6)  # 6 is exclusive, so it goes up to 5 (100.000)
+    exponents = np.arange(2, 16, 2)  # 16 is exclusive, so it goes up to 14
     beta_values = 10.0 ** exponents
     alpha = 0.3
     for beta in beta_values:
