@@ -121,11 +121,19 @@ class OPENBF_Jacobian:
         # Stacks files vertically (A, P, Q, u)
         stacked_data = np.vstack(data_list)
 
+        # Calculates the spectral norm (its largest singular value)
+        spectral_norm = np.linalg.norm(stacked_data, 2)
+
         # Saves the stacked file
         stacked_file = os.path.join(data_dir, f"{vessel}_stacked.last")
         np.savetxt(stacked_file, stacked_data, fmt="%.14e")
 
+        # Saves the spectral norm 
+        spectral_file = os.path.join(data_dir, f"{vessel}_spectral_norm.last")
+        np.savetxt(spectral_file, np.array([spectral_norm]), fmt="%.14e")
+
         print(f"Saved file: {stacked_file}")
+        print(f"Saved file: {spectral_file}")
 
     def partial_deriv_files(self, vessel, base_dir, updated_dir, del_dir, parameter):
         """
@@ -267,15 +275,23 @@ class OPENBF_Jacobian:
             np.savetxt(output_file, stacked_matrix, fmt="%.14e")
             print(f"Stacked matrix saved in: {output_file}")
 
-    def M_matrix(self, beta, vessel, knumber, valid_parameters):
-        """ Creates the M_matrix using the Jacobian matrix and saves it in the folder: "M_matrix_beta={beta}"."""
+    def A_matrix(self, beta, vessel, knumber, valid_parameters):
+        """ Creates the A_matrix using the Jacobian matrix and saves it in the folder: "A_matrix_beta={beta:.0e}"."""
 
         file_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_{vessel}_stacked.txt")
-        print_path = os.path.join(openBF_dir, f"M_matrix_beta={beta}", f"condition_{vessel}_k{knumber}.txt")
+        print_path = os.path.join(openBF_dir, f"A_matrix_beta={beta:.0e}", f"condition_{vessel}_k{knumber}.txt")
 
         if os.path.exists(file_path):
             Jk = np.loadtxt(file_path) # Loads the Jacobian matrix
-            JkT_Jk = Jk.T @ Jk # Jacobian transpose times the Jacobian
+
+            # Creates the diagonal matrix M with the weights of the y matrix (openBF output) 
+            scale_factors = np.concatenate([
+                np.full(100, 1e-10),  # First 100 elements (pressure): divided by 1e10
+                np.full(100, 1e6)     # Last 100 elements (velocity): multiplied by 1e6
+            ])
+            M = np.diag(scale_factors)
+            print(f"Diagonal matrix M ({M.shape}):")
+            print(M)
 
             # Define the regularization weights for each parameter
             weights = {
@@ -294,14 +310,14 @@ class OPENBF_Jacobian:
             print(D)
 
             # Regularizing the condition number of the inverse matrix
-            #beta = 1e1 # apagar: a partir de 1e12 (1e14 para beta = 1e-3 * np.linalg.norm(JkT_Jk))
-            Jk_beta = JkT_Jk + beta * D 
+            JkT_M_Jk = Jk.T @ M @ Jk # Jacobian transpose times the Jacobian with M matrix
+            A_matrix = JkT_M_Jk + beta * D 
 
             # Checks if it is invertible
             # Calculates the condition number
             cond_Jk = np.linalg.cond(Jk)
-            cond_matrix = np.linalg.cond(JkT_Jk)
-            cond_beta = np.linalg.cond(Jk_beta)
+            cond_Jk_M = np.linalg.cond(JkT_M_Jk)
+            cond_A = np.linalg.cond(A_matrix)
 
             # Sets a threshold to consider "non-invertible"
             threshold = 1e6
@@ -309,8 +325,8 @@ class OPENBF_Jacobian:
             # Checks the condition number of matrices
             matrices = [
                 (cond_Jk, f"Jk matrix"),
-                (cond_matrix, f"JkT@Jk matrix"),
-                (cond_beta, f"(JkT@Jk + beta * D) matrix")
+                (cond_Jk_M, f"JkT @ M @ Jk matrix"),
+                (cond_A, f"(JkT @ M @ Jk + beta * D) matrix")
             ]
 
             # Prints and saves in a file the condition number and the status of the matrices
@@ -329,22 +345,22 @@ class OPENBF_Jacobian:
                     log.write(msg_cond + "\n")
                     log.write(msg_status + "\n")
                     log.write("\n")
-                print(f"beta = {beta}")
-                log.write(f"beta = {beta} \n")
+                print(f"beta = {beta:.0e}")
+                log.write(f"beta = {beta:.0e} \n")
 
-            # Saves matrix Jk_beta (M matrix)
-            output_dir = os.path.join(openBF_dir, f"M_matrix_beta={beta}")
+            # Saves A matrix 
+            output_dir = os.path.join(openBF_dir, f"A_matrix_beta={beta:.0e}")
             os.makedirs(output_dir, exist_ok=True)  # Creates the folder if it does not exist
 
-            output_file = os.path.join(output_dir, f"Jk_beta_{vessel}.txt")
-            np.savetxt(output_file, Jk_beta, fmt="%.14e")
-            print(f"Jk_beta (M) matrix saved in: {output_file}")
+            output_file = os.path.join(output_dir, f"A_matrix_{vessel}.txt")
+            np.savetxt(output_file, A_matrix, fmt="%.14e")
+            print(f"A matrix saved in: {output_file}")
 
         else:
             print(f"Error: File not found - {file_path}.")
             return
 
-    def Z_matrix(self, vessel, knumber):
+    def B_matrix(self, beta, vessel, knumber):
 
         # Path to the jacobian matrix file
         file_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_{vessel}_stacked.txt")
@@ -374,17 +390,24 @@ class OPENBF_Jacobian:
 
         y_tilde = patient_data - yk_data
 
-        # Creates the Z matriz
-        Z = Jk.T @ y_tilde
+        # Creates the diagonal matrix M with the weights of the y matrix (openBF output) 
+        scale_factors = np.concatenate([
+            np.full(100, 1e-10),  # First 100 elements (pressure): divided by 1e10
+            np.full(100, 1e6)     # Last 100 elements (velocity): multiplied by 1e6
+        ])
+        M = np.diag(scale_factors)
 
-        # Where the Z matrix files will be
-        Z_dir = os.path.join(openBF_dir, "Z_matrix")
-        os.makedirs(Z_dir, exist_ok=True)
+        # Creates the B matriz
+        B = Jk.T @ M @ y_tilde
+
+        # Where the B matrix files will be
+        B_dir = os.path.join(openBF_dir, "B_matrix")
+        os.makedirs(B_dir, exist_ok=True)
 
         # Saves the y_tilde matrix in a file
-        Z_file = os.path.join(Z_dir, f"Z_matrix_{vessel}.last")
-        np.savetxt(Z_file, Z, fmt="%.14e")
-        print(f"Z matrix saved: {Z_file}")
+        B_file = os.path.join(B_dir, f"B_matrix_{vessel}_beta={beta:.0e}.last")
+        np.savetxt(B_file, B, fmt="%.14e")
+        print(f"B matrix saved: {B_file}")
 
     def Pdk(self, vessel, delta_dict, param_directory, yaml_file):
         """Loads the parameters of a yaml file and saves it in a directory."""
@@ -457,27 +480,27 @@ class OPENBF_Jacobian:
             print(f"Error: Pdk matrix file not found - {param_path}.")
             return
 
-        # Loads the data from the M matrix
-        M_matrix_path = os.path.join(openBF_dir, f"M_matrix_beta={beta}", f"Jk_beta_{vessel}.txt")
+        # Loads the data from the A matrix
+        A_matrix_path = os.path.join(openBF_dir, f"A_matrix_beta={beta:.0e}", f"A_matrix_{vessel}.txt")
 
-        if os.path.exists(M_matrix_path):
-            M_data = np.loadtxt(M_matrix_path)
+        if os.path.exists(A_matrix_path):
+            A_data = np.loadtxt(A_matrix_path)
         else:
-            print(f"Error: Pseudoinverse matrix file not found - {M_matrix_path}.")
+            print(f"Error: Pseudoinverse matrix file not found - {A_matrix_path}.")
             return
 
-        # Loads the data from the Z matrix
-        Z_matrix_path = os.path.join(openBF_dir, "Z_matrix", f"Z_matrix_{vessel}.last")
+        # Loads the data from the B matrix
+        B_matrix_path = os.path.join(openBF_dir, "B_matrix", f"B_matrix_{vessel}.last")
 
-        if os.path.exists(Z_matrix_path):
-            Z_data = np.loadtxt(Z_matrix_path).reshape(-1, 1)
+        if os.path.exists(B_matrix_path):
+            B_data = np.loadtxt(B_matrix_path).reshape(-1, 1)
 
         else:
-            print(f"Error: Z matrix file not found - {Z_matrix_path}.")
+            print(f"Error: B matrix file not found - {B_matrix_path}.")
             return
 
         # Creates the optimized parameters (Pd(k+1)) matrix
-        P_matrix = np.linalg.solve(M_data,Z_data)
+        P_matrix = np.linalg.solve(A_data,B_data)
         opt_param_data = param_data + alpha * P_matrix
 
         # Saves the optimized parameters matrix in a file
@@ -541,19 +564,45 @@ class OPENBF_Jacobian:
 
         print(f"Updated YAML saved in: {output_yaml_path}")
 
-    def plot_RMSE(self, vessel, beta, data_dir, knumber_max):
-        # Plots the average RMSE vs. iteration
+    def plot_error(self, vessel, beta, data_dir, valid_parameters, knumber_max):
+        # Plots the total error vs. iteration
 
         plt.close('all')
-        rmse_means = []
+        y_error_append = []
+        param_error_append = []
+
+        # Creates the diagonal matrix M with the weights of the y matrix (openBF output) 
+        scale_factors = np.concatenate([
+            np.full(100, 1e-10),  # First 100 elements (pressure): divided by 1e10
+            np.full(100, 1e6)     # Last 100 elements (velocity): multiplied by 1e6
+        ])
+        M = np.diag(scale_factors)
+
+        
+        # Define the regularization weights for each parameter
+        weights = {
+            "H0": 1.0,
+            "L": 1e-4,
+            "R0": 1e-2,
+            "Rp": 1e-2,
+            "Rd": 1e-2,
+            "E": 1e-14
+        }
+
+        # Creates the diagonal matrix D based on the valid_parameters order
+        D_values = [weights.get(param, 1.0) for param in valid_parameters]
+        D = np.diag(D_values)
+
 
         for knumber in range(0, knumber_max + 1):
-
-            rmse_totals_k = []  # List to store the total RMSE of the vessel
 
             # Files paths
             patient_file = os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last")
             k_file = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
+            if knumber == 0:
+                param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
+            else:
+                param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber}", f"Pdk_{vessel}.last")
 
             # Checks if files exist
             if not os.path.exists(patient_file):
@@ -563,59 +612,90 @@ class OPENBF_Jacobian:
                 print(f"Error: File {k_file} not found.")
                 return
 
-
             # Loads stacked files ignoring comments, takes only the 4ª column
             patient_data = np.loadtxt(patient_file, comments="#")[:, 3]
             k_data = np.loadtxt(k_file, comments="#")[:, 3]
 
-
-            def calculate_rmse(y0, y1):
-                if y0.shape != y1.shape:
-                    raise ValueError("The files have different shapes!")
-                error = y0 - y1
-                mse = np.mean(error ** 2)
-                rmse = np.sqrt(mse)
-                return rmse
-
-            # Calculates RMSE of k output relative to patient output
-            rmse_vector = calculate_rmse(patient_data, k_data) 
-
-            # Average RMSE
-            rmse_total = np.mean(rmse_vector) 
-
-            # Prints
-            print(f"### AVERAGE RMSE (patient - k = {knumber}): {rmse_total:.6f}")
+            # Calculates the squared error of the output of iteration k with respect to the patient output
+            diff = k_data - patient_data
+            y_error = diff.T @ M @ diff
 
             # Stores it to plot
-            rmse_means.append(rmse_total)
+            y_error_append.append(y_error)
+
+            # Loads parameters files
+            param_data = np.loadtxt(param_file)
+
+            # Calculates the squared error of the parameters
+            param_error = beta * param_data.T @ D @ param_data
+
+            # Stores it to plot
+            param_error_append.append(param_error)
+
 
         # Iterations: 0 to knumber_max
         iterations = np.arange(0, knumber_max + 1)
 
-        # Plots
-        fig = plt.figure(figsize=(8, 5))
-        plt.plot(iterations, rmse_means, marker='o', linestyle='-', color='tab:red')
-        plt.xlabel('Iterations')
-        plt.ylabel('Average RMSE (mid-point)')
-        plt.title(f'Average RMSE vs Iterations - {vessel}')
+        # Plots directory
+        plots_dir = os.path.join(data_dir, f"iteration_plots_beta={beta:.0e}")
+        os.makedirs(plots_dir, exist_ok=True)
+
+        # === 1. y_error plpot ===
+        fig1 = plt.figure(figsize=(8, 5))
+        plt.plot(iterations, y_error_append, marker='o', linestyle='-', color='tab:red')
+        plt.xlabel('Iteration')
+        plt.ylabel('y quadratic error (mid-point)')
+        plt.title(f'Squared error of yk with respect to the patient output - {vessel}')
         plt.grid(True)
         plt.tight_layout()
 
-        # Creates folder for saving plots
-        plots_dir = os.path.join(data_dir, f"iteration_plots_beta={beta}")
-        os.makedirs(plots_dir, exist_ok=True)
+        plot_path1 = os.path.join(plots_dir, f"y_error_plot")
+        plt.savefig(f"{plot_path1}.png", dpi=300)
+        plt.savefig(f"{plot_path1}.svg")
+        with open(f"{plot_path1}.pkl", "wb") as f:
+            pickle.dump(fig1, f)
+        plt.close(fig1)
 
-        # Saves plots in .png .svg and .pdf formats
-        plot_path = os.path.join(plots_dir, f"RMSE_plot")
+        # === 2. param_error plot ===
+        fig2 = plt.figure(figsize=(8, 5))
+        plt.plot(iterations, param_error_append, marker='s', linestyle='-', color='tab:blue')
+        plt.xlabel('Iteration')
+        plt.ylabel('Parameters quadratic error')
+        plt.title(f'Squared error of parameters - {vessel}')
+        plt.grid(True)
+        plt.tight_layout()
 
-        plt.savefig(f"{plot_path}.png", dpi=300)
-        plt.savefig(f"{plot_path}.svg")
-        with open(f"{plot_path}.pkl", "wb") as f:
-            pickle.dump(fig, f)
+        plot_path2 = os.path.join(plots_dir, f"param_error_plot")
+        plt.savefig(f"{plot_path2}.png", dpi=300)
+        plt.savefig(f"{plot_path2}.svg")
+        with open(f"{plot_path2}.pkl", "wb") as f:
+            pickle.dump(fig2, f)
+        plt.close(fig2)
 
-        plt.close(fig)
+        # === 3. Sum plot ===
+        total_error_append = np.array(y_error_append) + np.array(param_error_append)
 
-        print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
+        fig3 = plt.figure(figsize=(8, 5))
+        plt.plot(iterations, total_error_append, marker='^', linestyle='-', color='tab:green')
+        plt.xlabel('Iteration')
+        plt.ylabel('Total quadratic error')
+        plt.title(f'Sum of parameters and y errors - {vessel}')
+        plt.grid(True)
+        plt.tight_layout()
+
+        plot_path3 = os.path.join(plots_dir, f"total_error_plot")
+        plt.savefig(f"{plot_path3}.png", dpi=300)
+        plt.savefig(f"{plot_path3}.svg")
+        with open(f"{plot_path3}.pkl", "wb") as f:
+            pickle.dump(fig3, f)
+        plt.close(fig3)
+
+        # Confirmation in the terminal
+        print("Plots saved:")
+        print(f" - {plot_path1}.png, .svg, .pkl")
+        print(f" - {plot_path2}.png, .svg, .pkl")
+        print(f" - {plot_path3}.png, .svg, .pkl")
+
 
     def plot_iter(self, vessel, beta, delta_dict, data_dir: str, knumber_max: int):
         """Plota os parâmetros com delta ≠ 0 e suas diferenças relativas em relação ao paciente."""
@@ -623,7 +703,7 @@ class OPENBF_Jacobian:
         plt.close('all')
 
         file_template = 'Pdk_{}.last'
-        plots_dir = os.path.join(data_dir, f"iteration_plots_beta={beta}")
+        plots_dir = os.path.join(data_dir, f"iteration_plots_beta={beta:.0e}")
         os.makedirs(plots_dir, exist_ok=True)
 
         patient_parameters = "Pm"
@@ -791,13 +871,14 @@ class OPENBF_Jacobian:
         #self.plot_openBF(vessel, updated_dir)
 
     def iteration(self, knumber, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E):
-        """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
-        multiplies it to the y_tilde matrix and generates the optimized parameters."""
+        # ATUALIZAR DESCRICAO """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
+        #multiplies it to the y_tilde matrix and generates the optimized parameters."""
         add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E}
 
         # Filters parameters with delta != 0
         valid_parameters = [param for param in add_values if add_values[param] != 0]
         print (f"The valid parameters are: {valid_parameters}.")
+
 
         if knumber == 0:
             k_yaml_file = os.path.join(openBF_dir, self.k0_file)
@@ -825,10 +906,10 @@ class OPENBF_Jacobian:
             self.Pdk(vase, add_values, param_directory, yaml_file)
 
         # Creates the pseudoinverse matrix
-        self.M_matrix(beta, vase, knumber, valid_parameters)
+        self.A_matrix(beta, vase, knumber, valid_parameters)
 
         # Creates the y_tilde matrix
-        self.Z_matrix(vase, knumber)
+        self.B_matrix(beta, vase, knumber)
 
         # Creates the optimized parameters matrix
         self.optimized_parameters(vase, alpha, beta, knumber)
@@ -855,6 +936,10 @@ class OPENBF_Jacobian:
     def search_opt(self, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max):
 
         add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E}
+        parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
+
+        # Filters parameters with delta != 0
+        valid_parameters = [param for param in parameters if add_values[param] != 0]
 
         # Starts chronometer
         start = time.time()
@@ -864,7 +949,7 @@ class OPENBF_Jacobian:
             self.iteration(knumber, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E)
 
         # Plots RMSE for k from 0 to knumber_max
-        self.plot_RMSE(vase, beta, openBF_dir, knumber_max)
+        self.plot_error(vase, beta, openBF_dir, valid_parameters, knumber_max)
 
         # Plots the parameters for each iteration
         self.plot_iter(vase, beta, add_values, openBF_dir, knumber_max)
@@ -890,10 +975,12 @@ if __name__ == "__main__":
     #updater.file_openBF(patient_file, "ym - openBF output paciente")
 
     # Searches optimized parameters
-    # search_opt(self, vase, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
+    # search_opt(self, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     
-    exponents = np.arange(2, 16, 2)  # 16 is exclusive, so it goes up to 14
+    exponents = np.arange(-8, 3, 2)  # 3 is exclusive, so it goes up to 2
     beta_values = 10.0 ** exponents
     alpha = 0.3
     for beta in beta_values:
         updater.search_opt("vase1", alpha, beta, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+
+
