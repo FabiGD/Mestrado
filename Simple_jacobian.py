@@ -611,6 +611,9 @@ class OPENBF_Jacobian:
             if not os.path.exists(k_file):
                 print(f"Error: File {k_file} not found.")
                 return
+            if not os.path.exists(param_file):
+                print(f"Error: File {param_file} not found.")
+                return
 
             # Loads stacked files ignoring comments, takes only the 4ª column
             patient_data = np.loadtxt(patient_file, comments="#")[:, 3]
@@ -640,7 +643,7 @@ class OPENBF_Jacobian:
         plots_dir = os.path.join(data_dir, f"iteration_plots_beta={beta:.0e}")
         os.makedirs(plots_dir, exist_ok=True)
 
-        # === 1. y_error plpot ===
+        # === 1. y_error plot ===
         fig1 = plt.figure(figsize=(8, 5))
         plt.plot(iterations, y_error_append, marker='o', linestyle='-', color='tab:red')
         plt.xlabel('Iteration')
@@ -965,9 +968,9 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1/problema_inverso - Paciente.yaml"
-    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1/problema_inverso - k=0 - fixed_vessels_2and3.yaml"
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1"
+    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3/problema_inverso - Paciente.yaml"
+    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3/problema_inverso - k=0 - fixed_vessels_1and2.yaml"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3"
 
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
@@ -977,10 +980,8 @@ if __name__ == "__main__":
     # Searches optimized parameters
     # search_opt(self, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     
-    exponents = np.arange(-8, 3, 2)  # 3 is exclusive, so it goes up to 2
+    exponents = np.arange(-7, 2, 2)  # 2 is exclusive, so it goes up to 1
     beta_values = 10.0 ** exponents
     alpha = 0.3
     for beta in beta_values:
-        updater.search_opt("vase1", alpha, beta, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
-
-
+        updater.search_opt("vase3", alpha, beta, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
