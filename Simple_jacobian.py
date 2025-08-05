@@ -160,8 +160,7 @@ class OPENBF_Jacobian:
 
         # Checks if both files exist
         if not os.path.exists(base_file_path) or not os.path.exists(updated_file_path):
-            print(f"Error: Files for {vessel} not found. Skipped.")
-            return
+            raise SystemExit(f"Error: Files for {vessel} not found. Execution stopped.")
 
         # Loads the files .last
         base_data = np.loadtxt(base_file_path)
@@ -268,8 +267,7 @@ class OPENBF_Jacobian:
                 fourth_column = matrix[:, 3].reshape(-1, 1)  # Selects the 4th column and keeps 2D format
                 matrices.append(fourth_column)
             else:
-                print(f"Error: File not found - {file_path}.")
-                return
+                raise SystemExit(f"Error: File not found - {file_path}. Execution stopped.")
 
         if matrices:
             stacked_matrix = np.column_stack(matrices)
@@ -359,8 +357,7 @@ class OPENBF_Jacobian:
             print(f"A matrix saved in: {output_file}")
 
         else:
-            print(f"Error: File not found - {file_path}.")
-            return
+            raise SystemExit(f"Error: File not found - {file_path}. Execution stopped.")
 
     def B_matrix(self, beta, vessel, knumber):
 
@@ -479,8 +476,7 @@ class OPENBF_Jacobian:
         if os.path.exists(param_path):
             param_data = np.loadtxt(param_path).reshape(-1, 1)
         else:
-            print(f"Error: Pdk matrix file not found - {param_path}.")
-            return
+            raise SystemExit(f"Error: Pdk matrix file not found - {param_path}. Execution stopped.")
 
         # Loads the data from the A matrix
         A_matrix_path = os.path.join(openBF_dir, f"A_matrix_beta={beta:.0e}", f"A_matrix_{vessel}.txt")
@@ -488,18 +484,16 @@ class OPENBF_Jacobian:
         if os.path.exists(A_matrix_path):
             A_data = np.loadtxt(A_matrix_path)
         else:
-            print(f"Error: Pseudoinverse matrix file not found - {A_matrix_path}.")
-            return
+            raise SystemExit(f"Error: A matrix file not found - {A_matrix_path}. Execution stopped.")
 
         # Loads the data from the B matrix
-        B_matrix_path = os.path.join(openBF_dir, "B_matrix", f"B_matrix_{vessel}.last")
+        B_matrix_path = os.path.join(openBF_dir, "B_matrix", f"B_matrix_{vessel}_beta={beta:.0e}.last")
 
         if os.path.exists(B_matrix_path):
             B_data = np.loadtxt(B_matrix_path).reshape(-1, 1)
 
         else:
-            print(f"Error: B matrix file not found - {B_matrix_path}.")
-            return
+            raise SystemExit(f"Error: B matrix file not found - {B_matrix_path}. Execution stopped.")
 
         # Creates the optimized parameters (Pd(k+1)) matrix
         P_matrix = np.linalg.solve(A_data,B_data)
@@ -609,14 +603,11 @@ class OPENBF_Jacobian:
 
             # Checks if files exist
             if not os.path.exists(patient_file):
-                print(f"Error: File {patient_file} not found.")
-                return
+                raise SystemExit(f"Error: File {patient_file} not found. Execution stopped.")
             if not os.path.exists(k_file):
-                print(f"Error: File {k_file} not found.")
-                return
+                raise SystemExit(f"Error: File {k_file} not found. Execution stopped.")
             if not os.path.exists(param_file):
-                print(f"Error: File {param_file} not found.")
-                return
+                raise SystemExit(f"Error: File {param_file} not found. Execution stopped.")
 
             # Loads stacked files ignoring comments, takes only the 4ª column
             patient_data = np.loadtxt(patient_file, comments="#")[:, 3]
@@ -735,8 +726,7 @@ class OPENBF_Jacobian:
         for folder in folders:
             file_path = os.path.join(self.openBF_dir, folder, file_name)
             if not os.path.isfile(file_path):
-                print(f"Error: File not found at {file_path}")
-                return
+                raise SystemExit(f"Error: File not found at {file_path}. Execution stopped.")
 
             dados = np.loadtxt(file_path).flatten()
             for i, p in enumerate(valid_params):
@@ -744,8 +734,7 @@ class OPENBF_Jacobian:
 
         patient_path = os.path.join(self.openBF_dir, patient_parameters, file_name)
         if not os.path.isfile(patient_path):
-            print(f"Error: Patient file not found at {patient_path}")
-            return
+            raise SystemExit(f"Error: Patient file not found at {patient_path}. Execution stopped.")
 
         patient_data = np.loadtxt(patient_path).flatten()
         patient_vals = {p: patient_data[i] for i, p in enumerate(valid_params)}
@@ -893,8 +882,7 @@ class OPENBF_Jacobian:
 
             # Checks if file exists
             if not os.path.exists(k_yaml_file):
-                print(f"Error: File {k_yaml_file} not found.")
-                return
+                raise SystemExit(f"Error: File {k_yaml_file} not found. Execution stopped.")
 
             # Runs openBF to 0-iteration YAML file
             self.file_openBF(k_yaml_file, f"y{knumber} - openBF output iteration {knumber}")
@@ -932,8 +920,7 @@ class OPENBF_Jacobian:
 
         # Checks if file exists
         if not os.path.exists(base_yaml_path):
-            print(f"Error: File {base_yaml_path} not found.")
-            return
+            raise SystemExit(f"Error: File {base_yaml_path} not found. Execution stopped.")
 
         self.update_yaml_with_optimized_parameters(vase, add_values, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
 
@@ -973,20 +960,22 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1/problema_inverso - Paciente.yaml"
-    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1/problema_inverso - k=0 - fixed_vessels_2and3.yaml"
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase1"
+    patient_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3/problema_inverso - Paciente.yaml"
+    k0_file = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3/problema_inverso - k=0 - fixed_vessels_1and2.yaml"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase3"
 
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
     # Runs openBF to patient file
-    #updater.file_openBF(patient_file, "ym - openBF output paciente")
+    updater.file_openBF(patient_file, "ym - openBF output paciente")
 
     # Searches optimized parameters
     # search_opt(self, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     
-    exponents = np.arange(1, 2, 2)  # 2 is exclusive, so it goes up to 1
+    exponents = np.arange(-8, 3, 2)  # 3 is exclusive, so it goes up to 2
     beta_values = 10.0 ** exponents
     alpha = 0.3
     for beta in beta_values:
-        updater.search_opt("vase1", alpha, beta, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+        updater.search_opt("vase3", alpha, beta, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+
+
