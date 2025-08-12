@@ -295,7 +295,7 @@ class OPENBF_Jacobian:
 
             # Define the regularization weights for each parameter
             weights = {
-                "H0": 1.0,
+                "H0": 1,
                 "L": 1e-4,
                 "R0": 1e-2,
                 "Rp": 1e-2,
@@ -309,36 +309,41 @@ class OPENBF_Jacobian:
             print("Diagonal matrix D:")
             print(D)
 
-            # Regularizing the condition number of the inverse matrix
+            # Regularizing the solution of the LS-problem
             JkT_M_Jk = Jk.T @ M @ Jk # Jacobian transpose times the Jacobian with M matrix
             A_matrix = JkT_M_Jk + beta * D 
 
             # Checks if it is invertible
-            # Calculates the condition number
-            cond_Jk = np.linalg.cond(Jk)
-            cond_Jk_M = np.linalg.cond(JkT_M_Jk)
-            cond_A = np.linalg.cond(A_matrix)
+            # Calculates the rank
+            u_Jk, s_Jk, vh_Jk = np.linalg.svd(Jk)
+            rank_Jk = np.sum(s_Jk > 1e-12)  # tolerance
+            u_JkT_M_Jk, s_JkT_M_Jk, vh_JkT_M_Jk = np.linalg.svd(JkT_M_Jk)
+            rank_JkT_M_Jk = np.sum(s_JkT_M_Jk > 1e-12)  # tolerance
+            u_A, s_A, vh_A = np.linalg.svd(A_matrix)
+            rank_A = np.sum(s_A > 1e-12)  # tolerance
 
-            # Sets a threshold to consider "non-invertible"
-            threshold = 1e6
 
-            # Checks the condition number of matrices
+            if rank_Jk < min(Jk.shape):
+                print("A matriz é rank-deficient")
+
+
+            # Checks the singularity of matrices
             matrices = [
-                (cond_Jk, f"Jk matrix"),
-                (cond_Jk_M, f"JkT @ M @ Jk matrix"),
-                (cond_A, f"(JkT @ M @ Jk + beta * D) matrix")
+                (Jk, rank_Jk, f"Jk matrix"),
+                (JkT_M_Jk, rank_JkT_M_Jk, f"JkT @ M @ Jk matrix"),
+                (A_matrix, rank_A, f"(JkT @ M @ Jk + beta * D) matrix")
             ]
 
             # Prints and saves in a file the condition number and the status of the matrices
             os.makedirs(os.path.dirname(print_path), exist_ok=True)
 
             with open(print_path, "w") as log:
-                for cond, desc in matrices:
-                    msg_cond = f"{desc} condition number: {cond:.2e}"
+                for matrix, rank, desc in matrices:
+                    msg_cond = f"{desc} rank: {rank:.2e}"
                     msg_status = (
-                        f"The {desc} is invertible."
-                        if cond < threshold
-                        else f"Error: The {desc} is quasi-singular or non-invertible."
+                        f"Warning: The {desc} is rank-deficient (non-invertible)."
+                        if rank < min(matrix.shape)
+                        else f"The {desc} is full-rank (invertible)."
                     )
                     print(msg_cond)
                     print(msg_status)
@@ -967,12 +972,12 @@ if __name__ == "__main__":
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
     # Runs openBF to patient file
-    updater.file_openBF(patient_file, "ym - openBF output paciente")
+    #updater.file_openBF(patient_file, "ym - openBF output paciente")
 
     # Searches optimized parameters
     # search_opt(self, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     
-    exponents = np.arange(-8, 3, 2)  # 3 is exclusive, so it goes up to 2
+    exponents = np.arange(-7, 2, 2)  # 2 is exclusive, so it goes up to 1
     beta_values = 10.0 ** exponents
     alpha = 0.3
     for beta in beta_values:
