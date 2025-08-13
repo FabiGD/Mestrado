@@ -634,7 +634,7 @@ class OPENBF_Jacobian:
 
             # Calculates the squared error of the output of iteration k with respect to the patient output
             Y = patient_data - yk_data + Jk_data @ deltaP_matrix
-            Y_error = Y.T @ M @ Y
+            Y_error = 0.5 * (Y.T @ M @ Y)
 
             # Stores it to plot
             Y_error_append.append(Y_error)
