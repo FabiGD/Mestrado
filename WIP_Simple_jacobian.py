@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import pickle
 import numpy as np
 import time
+import sys
 
 from julia import Main
 from matplotlib.ticker import ScalarFormatter
@@ -310,26 +311,19 @@ class OPENBF_Jacobian:
             print(D)
 
             # Regularizing the solution of the LS-problem
-            JkT_M_Jk = Jk.T @ M @ Jk # Jacobian transpose times the Jacobian with M matrix
+            JkT_M_Jk = Jk.T @ Jk # Jacobian transpose times the Jacobian with M matrix
             A_matrix = JkT_M_Jk + beta * D 
 
             # Checks if it is invertible
             # Calculates the rank
-            u_Jk, s_Jk, vh_Jk = np.linalg.svd(Jk)
-            rank_Jk = np.sum(s_Jk > 1e-12)  # tolerance
+            threshold = 1e-12 # threshold to consider a number equivalent to zero
             u_JkT_M_Jk, s_JkT_M_Jk, vh_JkT_M_Jk = np.linalg.svd(JkT_M_Jk)
-            rank_JkT_M_Jk = np.sum(s_JkT_M_Jk > 1e-12)  # tolerance
+            rank_JkT_M_Jk = np.sum(s_JkT_M_Jk > threshold)
             u_A, s_A, vh_A = np.linalg.svd(A_matrix)
-            rank_A = np.sum(s_A > 1e-12)  # tolerance
-
-
-            if rank_Jk < min(Jk.shape):
-                print("A matriz é rank-deficient")
-
+            rank_A = np.sum(s_A > threshold)
 
             # Checks the singularity of matrices
             matrices = [
-                (Jk, rank_Jk, f"Jk matrix"),
                 (JkT_M_Jk, rank_JkT_M_Jk, f"JkT @ M @ Jk matrix"),
                 (A_matrix, rank_A, f"(JkT @ M @ Jk + beta * D) matrix")
             ]
@@ -402,7 +396,7 @@ class OPENBF_Jacobian:
         M = np.diag(scale_factors)
 
         # Creates the B matriz
-        B = Jk.T @ M @ R_matrix
+        B = Jk.T @ R_matrix
 
         # Where the B matrix files will be
         B_dir = os.path.join(openBF_dir, "B_matrix")
@@ -634,13 +628,13 @@ class OPENBF_Jacobian:
 
             # Calculates the squared error of the output of iteration k with respect to the patient output
             Y = patient_data - yk_data + Jk_data @ deltaP_matrix
-            Y_error = 0.5 * (Y.T @ M @ Y)
+            Y_error = 0.5 * (Y.T @ Y)
 
             # Stores it to plot
             Y_error_append.append(Y_error)
 
             # Calculates the squared error of the parameters
-            param_error = beta * deltaP_matrix.T @ D @ deltaP_matrix
+            param_error = beta * (deltaP_matrix.T @ D @ deltaP_matrix)
 
             # Stores it to plot
             param_error_append.append(param_error)
@@ -983,7 +977,7 @@ if __name__ == "__main__":
     updater = OPENBF_Jacobian(patient_file, k0_file, openBF_dir)
 
     # Runs openBF to patient file
-    updater.file_openBF(patient_file, "ym - openBF output paciente")
+    #updater.file_openBF(patient_file, "ym - openBF output paciente")
 
     # Searches optimized parameters
     # search_opt(self, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
