@@ -285,19 +285,16 @@ class OPENBF_Jacobian:
         if os.path.exists(file_path):
             Jk = np.loadtxt(file_path) # Loads the Jacobian matrix
 
-            # Creates the diagonal matrix M with the weights of the y matrix (openBF output) 
-            scale_factors = np.concatenate([
-                np.full(100, 1e-10),  # First 100 elements (pressure): divided by 1e10
-                np.full(100, 1e6)     # Last 100 elements (velocity): multiplied by 1e6
-            ])
-            M = np.diag(scale_factors)
-            print(f"Diagonal matrix M ({M.shape}):")
+            # Whitening by Jacobian line
+            row_norms = np.linalg.norm(Jk, axis=1) # Each line norm
+            eps = 1e-30
+            M = np.diag(1.0 / (row_norms**2 + eps))
             print(M)
 
             # Define the regularization weights for each parameter
             weights = {
                 "H0": 1,
-                "L": 1e-4,
+                "L": 1e-8,
                 "R0": 1e-2,
                 "Rp": 1e-2,
                 "Rd": 1e-2,
@@ -311,7 +308,7 @@ class OPENBF_Jacobian:
             print(D)
 
             # Regularizing the solution of the LS-problem
-            JkT_M_Jk = Jk.T @ Jk # Jacobian transpose times the Jacobian with M matrix
+            JkT_M_Jk = Jk.T @ M @ Jk # Jacobian transpose times the Jacobian with M matrix
             A_matrix = JkT_M_Jk + beta * D 
 
             # Checks if it is invertible
@@ -388,15 +385,13 @@ class OPENBF_Jacobian:
 
         R_matrix = patient_data - yk_data
 
-        # Creates the diagonal matrix M with the weights of the y matrix (openBF output) 
-        scale_factors = np.concatenate([
-            np.full(100, 1e-10),  # First 100 elements (pressure): divided by 1e10
-            np.full(100, 1e6)     # Last 100 elements (velocity): multiplied by 1e6
-        ])
-        M = np.diag(scale_factors)
+        # Whitening by Jacobian line
+        row_norms = np.linalg.norm(Jk, axis=1) # Each line norm
+        eps = 1e-30
+        M = np.diag(1.0 / (row_norms**2 + eps))
 
         # Creates the B matriz
-        B = Jk.T @ R_matrix
+        B = Jk.T @ M @ R_matrix
 
         # Where the B matrix files will be
         B_dir = os.path.join(openBF_dir, "B_matrix")
@@ -566,24 +561,16 @@ class OPENBF_Jacobian:
         plt.close('all')
         Y_error_append = []
         param_error_append = []
-
-        # Creates the diagonal matrix M with the weights of the y matrix (openBF output) 
-        scale_factors = np.concatenate([
-            np.full(100, 1e-10),  # First 100 elements (pressure): divided by 1e10
-            np.full(100, 1e6)     # Last 100 elements (velocity): multiplied by 1e6
-        ])
-        M = np.diag(scale_factors)
-
         
         # Define the regularization weights for each parameter
         weights = {
-            "H0": 1.0,
-            "L": 1e-4,
-            "R0": 1e-2,
-            "Rp": 1e-2,
-            "Rd": 1e-2,
-            "E": 1e-14
-        }
+                "H0": 1,
+                "L": 1e-8,
+                "R0": 1e-2,
+                "Rp": 1e-2,
+                "Rd": 1e-2,
+                "E": 1e-14
+            }
 
         # Creates the diagonal matrix D based on the valid_parameters order
         D_values = [weights.get(param, 1.0) for param in valid_parameters]
@@ -605,16 +592,18 @@ class OPENBF_Jacobian:
                 k_param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber}", f"Pdk_{vessel}.last")
 
             # Checks if files exist
-            if not os.path.exists(patient_file):
-                raise SystemExit(f"Error: File {patient_file} not found. Execution stopped.")
-            if not os.path.exists(yk_file):
-                raise SystemExit(f"Error: File {yk_file} not found. Execution stopped.")
-            if not os.path.exists(Jk_file):
-                raise SystemExit(f"Error: File {Jk_file} not found. Execution stopped.")
-            if not os.path.exists(kplus_param_file):
-                raise SystemExit(f"Error: File {kplus_param_file} not found. Execution stopped.")
-            if not os.path.exists(k_param_file):
-                raise SystemExit(f"Error: File {k_param_file} not found. Execution stopped.")
+            required_files = [
+                patient_file,
+                yk_file,
+                Jk_file,
+                kplus_param_file,
+                k_param_file
+            ]
+
+            for file_path in required_files:
+                if not os.path.exists(file_path):
+                    raise SystemExit(f"Error: Required file '{file_path}' not found. Execution stopped.")
+
 
             # Loads files ignoring comments
             patient_data = np.loadtxt(patient_file, comments="#")[:, 3] # Takes only the 4ª column
@@ -623,12 +612,18 @@ class OPENBF_Jacobian:
             kplus_data = np.loadtxt(kplus_param_file, comments="#")
             k_data = np.loadtxt(k_param_file, comments="#")
 
+            # Whitening by Jacobian line
+            row_norms = np.linalg.norm(Jk_data, axis=1) # Each line norm
+            eps = 1e-30
+            M = np.diag(1.0 / (row_norms**2 + eps))
+            print(M)
+
             # Creates deltaP matrix
             deltaP_matrix = kplus_data - k_data
 
             # Calculates the squared error of the output of iteration k with respect to the patient output
             Y = patient_data - yk_data + Jk_data @ deltaP_matrix
-            Y_error = 0.5 * (Y.T @ Y)
+            Y_error = 0.5 * (Y.T @ M @ Y)
 
             # Stores it to plot
             Y_error_append.append(Y_error)
@@ -647,7 +642,7 @@ class OPENBF_Jacobian:
         plots_dir = os.path.join(data_dir, f"iteration_plots_beta={beta:.0e}")
         os.makedirs(plots_dir, exist_ok=True)
 
-        # === 1. y_error plot ===
+        # 1. y_error plot
         fig1 = plt.figure(figsize=(8, 5))
         plt.plot(iterations, Y_error_append, marker='o', linestyle='-', color='tab:red')
         plt.xlabel('Iteration')
@@ -663,7 +658,7 @@ class OPENBF_Jacobian:
             pickle.dump(fig1, f)
         plt.close(fig1)
 
-        # === 2. param_error plot ===
+        # 2. param_error plot
         fig2 = plt.figure(figsize=(8, 5))
         plt.plot(iterations, param_error_append, marker='s', linestyle='-', color='tab:blue')
         plt.xlabel('Iteration')
@@ -679,7 +674,7 @@ class OPENBF_Jacobian:
             pickle.dump(fig2, f)
         plt.close(fig2)
 
-        # === 3. Sum plot ===
+        # 3. Sum plot
         total_error_append = np.array(Y_error_append) + np.array(param_error_append)
 
         fig3 = plt.figure(figsize=(8, 5))
@@ -964,6 +959,61 @@ class OPENBF_Jacobian:
         minutes = (end - start)/60
         print(f"Elapsed time: {minutes:.3f} minutes.")
 
+        import os, numpy as np
+
+    def diagnose_scales(self, vessel, knumber, beta, valid_parameters, weights=None):
+        if weights is None:
+            weights = {
+                "H0": 1,
+                "L": 1e-8,
+                "R0": 1e-2,
+                "Rp": 1e-2,
+                "Rd": 1e-2,
+                "E": 1e-14
+            }
+
+        # Carrega Jk, y_m, y_k
+        Jk = np.loadtxt(os.path.join(openBF_dir, "jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt"))
+        ym = np.loadtxt(os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last"))[:,3:4]
+        yk = np.loadtxt(os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last"))[:,3:4]
+
+        # Whitening by Jacobian line
+        row_norms = np.linalg.norm(Jk, axis=1) # Each line norm
+        eps = 1e-30
+        M = np.diag(1.0 / (row_norms**2 + eps))
+
+        # D diagonal na ordem dos parâmetros válidos
+        D = np.diag([weights.get(p,1.0) for p in valid_parameters])
+
+        # Matrizes 
+        JT_M_J = Jk.T @ M @ Jk
+        A = JT_M_J + beta * D
+        B = Jk.T @ M @ (ym - yk)
+
+        # Normas e espectros
+        n_J = np.linalg.norm(JT_M_J, 2)
+        n_betaD = np.linalg.norm(beta * D, 2)   # = beta * max(diag(D))
+        r = n_betaD / n_J if n_J>0 else np.inf
+
+        # Condições
+        sv_A = np.linalg.svd(A, compute_uv=False)
+        sv_J = np.linalg.svd(JT_M_J, compute_uv=False)
+        cond_A = (sv_A.max()/sv_A.min()) if sv_A.min()>0 else np.inf
+        cond_J = (sv_J.max()/sv_J.min()) if sv_J.min()>0 else np.inf
+
+        # Soluções com e sem βD
+        dp_noD = np.linalg.lstsq(JT_M_J, B, rcond=None)[0]
+        dp_withD = np.linalg.solve(A, B)
+        rel_step_change = np.linalg.norm(dp_withD - dp_noD)/max(1e-16, float(np.linalg.norm(dp_noD)))
+
+        print(f"||J^T M J||_2     = {n_J: .3e}")
+        print(f"||β D||_2         = {n_betaD: .3e}")
+        print(f"ratio ||βD||/||J||= {r: .3e}   (se << 1, D é irrelevante)")
+        print(f"cond(J^T M J)     = {cond_J: .3e}")
+        print(f"cond(A)            = {cond_A: .3e}")
+        print(f"ΔP change (with D vs no D): {rel_step_change: .3e}")
+
+
 
 
 
@@ -982,10 +1032,14 @@ if __name__ == "__main__":
     # Searches optimized parameters
     # search_opt(self, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
     
-    exponents = np.arange(-8, 3)  # 3 is exclusive, so it goes up to 2
-    beta_values = 10.0 ** exponents
-    alpha = 0.3
-    for beta in beta_values:
-        updater.search_opt("vase1", alpha, beta, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+    # exponents = np.arange(-8, 3)  # 3 is exclusive, so it goes up to 2
+    # beta_values = 10.0 ** exponents
+    # alpha = 0.3
+    # for beta in beta_values:
+    #     updater.search_opt("vase1", alpha, beta, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+
+    #updater.diagnose_scales("vase1", 20, 1e2, ["h0","L","R0"], weights=None)
+
+    updater.search_opt("vase1", 0.3, 1e2, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
 
 
