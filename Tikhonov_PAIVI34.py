@@ -284,9 +284,11 @@ class OPENBF_Jacobian:
 
         if os.path.exists(file_path):
             Jk = np.loadtxt(file_path) # Loads the Jacobian matrix
+            if Jk.ndim == 1:
+                Jk = Jk.reshape(-1, 1)
 
             # Finds optimal beta
-            beta_opt = self.find_beta(vessel, knumber, valid_parameters)
+            beta_opt = self.find_beta(vessel, knumber, valid_parameters, plot=True)
 
             # Regularizing the solution of the LS-problem
             JkT_Jk = Jk.T @ Jk # Jacobian transpose times the Jacobian with M matrix
@@ -383,7 +385,7 @@ class OPENBF_Jacobian:
             raise SystemExit(f"Error: Iteration parameters file not found - {k_param_file}")
         
         # Finds optimal beta
-        beta_opt = self.find_beta(vessel, knumber, valid_parameters)
+        beta_opt = self.find_beta(vessel, knumber, valid_parameters, plot=False)
 
         # Creates the B matriz
         B = Jk.T @ R_matrix - beta_opt**2 * (k_param_data - k0_param_data)
@@ -394,7 +396,7 @@ class OPENBF_Jacobian:
 
         # Saves the B matrix in a file
         B_file = os.path.join(B_dir, f"B_matrix_{vessel}_beta={beta:.0e}.last")
-        np.savetxt(B_file, B, fmt="%.14e")
+        np.savetxt(B_file, np.atleast_1d(B), fmt="%.14e")
         print(f"B matrix saved: {B_file}")
 
     def Pdk(self, vessel, delta_dict, param_directory, yaml_file):
@@ -472,6 +474,8 @@ class OPENBF_Jacobian:
 
         if os.path.exists(A_matrix_path):
             A_data = np.loadtxt(A_matrix_path)
+            if A_data.ndim == 0:
+                A_data = np.array([[A_data]]) # scalar becomes 1x1 matrix
         else:
             raise SystemExit(f"Error: A matrix file not found - {A_matrix_path}. Execution stopped.")
 
@@ -479,13 +483,20 @@ class OPENBF_Jacobian:
         B_matrix_path = os.path.join(openBF_dir, "B_matrix", f"B_matrix_{vessel}_beta={beta:.0e}.last")
 
         if os.path.exists(B_matrix_path):
-            B_data = np.loadtxt(B_matrix_path).reshape(-1, 1)
+            B_data = np.loadtxt(B_matrix_path)
+            # Adjusting the dimensions to use np.lingalg.solve
+            if B_data.ndim == 0:
+                B_data = np.array([B_data]) # scalar becomes 1D vector
+            B_data = B_data.reshape(-1, 1)
 
         else:
             raise SystemExit(f"Error: B matrix file not found - {B_matrix_path}. Execution stopped.")
 
+
         # Creates the optimized parameters (Pd(k+1)) matrix
         deltaP_matrix = np.linalg.solve(A_data,B_data)
+        deltaP_matrix = deltaP_matrix.ravel()   # Ensures vector (n_params,)
+        print("Shape of deltaP is:", deltaP_matrix.shape)
         opt_param_data = param_data + alpha * deltaP_matrix
         print(f"Optimized parameters (Pdk+1): {opt_param_data.flatten()}")
 
@@ -596,21 +607,26 @@ class OPENBF_Jacobian:
             k0_data = np.loadtxt(k0_param_file, comments="#") # verificar se apago
             k_data = np.loadtxt(k_param_file, comments="#")
 
+            # Corrects Jk dimension 
+            if Jk_data.ndim == 1:
+                Jk_data = Jk_data.reshape(-1, 1) # (200,) -> (200,1)
+            print("Shape of Jk is:", Jk_data.shape)
+
             # Creates deltaP matrix
             deltaP_matrix = kplus_data - k_data
 
             # Calculates the squared error of the output of iteration k with respect to the patient output
-            Y = patient_data - yk_data - Jk_data @ deltaP_matrix
+            Y = patient_data - yk_data - Jk_data @ np.atleast_1d(deltaP_matrix)
             Y_error = 0.5 * (Y.T @ Y)
 
             # Stores it to plot
             Y_error_append.append(Y_error)
 
             # Finds optimal beta
-            beta_opt = self.find_beta(vessel, knumber, valid_parameters)
+            beta_opt = self.find_beta(vessel, knumber, valid_parameters, plot=False)
 
             # Calculates the squared error of the parameters
-            param = np.eye(len(valid_parameters)) @ deltaP_matrix
+            param = np.eye(len(valid_parameters)) @ np.atleast_1d(deltaP_matrix)
             param_error = 0.5 * beta_opt**2 * (param.T @ param)
 
             # Stores it to plot
@@ -682,7 +698,7 @@ class OPENBF_Jacobian:
 
 
     def plot_iter(self, vessel, beta, delta_dict, data_dir: str, knumber_max: int):
-        """Plota os parâmetros com delta ≠ 0 e suas diferenças relativas em relação ao paciente."""
+        """Plots the parameters with delta ≠ 0 and their relative differences from the patient."""
 
         plt.close('all')
 
@@ -728,11 +744,11 @@ class OPENBF_Jacobian:
 
         iterations = np.arange(len(folders))
 
-        # Separar E dos outros
+        # Separate E from others
         params_main = [p for p in valid_params if p != "E"]
         has_E = "E" in valid_params
 
-        # Plot absoluto (sem E)
+        # Absolute plot (without E)
         if params_main:
             fig1, ax1 = plt.subplots(figsize=(10, 6))
             for p in params_main:
@@ -752,7 +768,7 @@ class OPENBF_Jacobian:
             plt.close(fig1)
             print(f"Saved: {plot_path}.png, .svg, .pkl")
 
-        # Plot exclusivo para E
+        # Exclusive plot for E
         if has_E:
             figE, axE = plt.subplots(figsize=(10, 6))
             axE.yaxis.set_major_formatter(ScalarFormatter(useMathText=False))
@@ -772,7 +788,7 @@ class OPENBF_Jacobian:
             plt.close(figE)
             print(f"Saved: {plot_path_E}.png, .svg, .pkl")
 
-        # Plot diferenças relativas (todos juntos, inclusive E)
+        # Plot relative differences (all together, including E)
         fig2, ax2 = plt.subplots(figsize=(10, 6))
         for p in valid_params:
             vals = np.array(param_series[p])
@@ -941,7 +957,6 @@ class OPENBF_Jacobian:
         minutes = (end - start)/60
         print(f"Elapsed time: {minutes:.3f} minutes.")
 
-        import os, numpy as np
 
     def diagnose_scales(self, vessel, knumber, beta, valid_parameters):
 
@@ -983,12 +998,14 @@ class OPENBF_Jacobian:
         print(f"cond(A)            = {cond_A: .3e}")
         print(f"ΔP change (with D vs no D): {rel_step_change: .3e}")
 
-    def find_beta(self, vessel, knumber, valid_parameters):
+    def find_beta(self, vessel, knumber, valid_parameters, plot=True):
         # To generate the L-curve and find beta_opt, you don't need a specific β beforehand: 
         # you only need the iterations of the model without regularization or with a fixed 
         # initial β used to generate the files.
 
-        plt.close('all')
+        if plot:
+            plt.close('all')
+
         residual_append = []
         solution_append = []
         kplus = knumber + 1
@@ -1026,6 +1043,10 @@ class OPENBF_Jacobian:
         k0_data = np.loadtxt(k0_param_file, comments="#")
         k_data = np.loadtxt(k_param_file, comments="#")
 
+        # Corrects Jk dimension 
+        if Jk_data.ndim == 1:
+            Jk_data = Jk_data.reshape(-1, 1) # (200,) -> (200,1)
+
         # Creates 1000 points of beta
         beta_values = np.logspace(-8, 2, 1000)   # 1000 points between 1e-8 e 1e2
 
@@ -1039,11 +1060,19 @@ class OPENBF_Jacobian:
             R_matrix = patient_data - yk_data
             B = Jk_data.T @ R_matrix - beta**2 * (k_data - k0_data)
 
+            # Adjusting the dimensions to use np.lingalg.solve
+            if B.ndim == 0:
+                B = np.array([B])     # scalar becomes 1D vector
+            if B.ndim == 1:
+                B = B.reshape(-1, 1)  # vector becomes column
+
             # Solves the equation with the corresponding beta
             try:
                 dp = np.linalg.solve(A, B)
+                dp = dp.ravel()   # Ensures vector (n_params,)
             except np.linalg.LinAlgError:
                 raise SystemExit(f"Error: A is not singular (non inversible). Execution stopped.")
+            
 
             # Calculates the squared error of the output of iteration k with respect to the patient output
             residual = patient_data - yk_data - Jk_data @ dp
@@ -1053,11 +1082,12 @@ class OPENBF_Jacobian:
             residual_append.append(residual_norm)
 
             # Calculates the squared error of the parameters
-            solution = np.eye(len(valid_parameters)) @ dp #Verificar
+            solution = np.eye(len(valid_parameters)) @ dp 
             solution_norm = (solution.T @ solution)
 
             # Stores it to plot
             solution_append.append(solution_norm)
+
 
         # Curvature in log-log space
         x = np.log(np.array(residual_append))
@@ -1076,42 +1106,33 @@ class OPENBF_Jacobian:
 
         print(f"Optimal β found: {beta_opt:.3e}")
     
-        # Plot directory
-        plot_dir = os.path.join(openBF_dir, "iteration_plots_Lcurve")
-        os.makedirs(plot_dir, exist_ok=True)
+        if plot:
+            # Plot directory
+            plot_dir = os.path.join(openBF_dir, "iteration_plots_Lcurve")
+            os.makedirs(plot_dir, exist_ok=True)
 
-        # Plot
-        fig = plt.figure(figsize=(8, 6))
-        plt.loglog(residual_append, solution_append, marker='o', linestyle='-', color='tab:red')
-        plt.scatter(residual_append[idx_opt], solution_append[idx_opt], color='blue', s=80, label=f"β ótimo={beta_opt:.1e}")
-        plt.xlabel('Residual norm')
-        plt.ylabel('Solution norm')
-        plt.title(f'L-curve - {vessel}')
-        plt.legend()
-        plt.grid(True, which="both")
-        plt.tight_layout()
+            # Plot
+            fig = plt.figure(figsize=(8, 6))
+            plt.loglog(residual_append, solution_append, marker='o', linestyle='-', color='tab:red')
+            plt.scatter(residual_append[idx_opt], solution_append[idx_opt], color='blue', s=80, label=f"β ótimo={beta_opt:.1e}")
+            plt.xlabel('Residual norm')
+            plt.ylabel('Solution norm')
+            plt.title(f'L-curve - {vessel}')
+            plt.legend()
+            plt.grid(True, which="both")
+            plt.tight_layout()
 
-        plot_path = os.path.join(plot_dir, f"Lcurve_{vessel}_k{knumber}")
-        plt.savefig(f"{plot_path}.png", dpi=300)
-        plt.savefig(f"{plot_path}.svg")
-        with open(f"{plot_path}.pkl", "wb") as f:
-            pickle.dump(fig, f)
-        plt.close(fig)
+            plot_path = os.path.join(plot_dir, f"Lcurve_{vessel}_k{knumber}")
+            plt.savefig(f"{plot_path}.png", dpi=300)
+            plt.savefig(f"{plot_path}.svg")
+            with open(f"{plot_path}.pkl", "wb") as f:
+                pickle.dump(fig, f)
+            plt.close(fig)
 
-        # Confirmaton on the terminal
-        print(f"L-curve plot saved: {plot_path}.png, .svg, .pkl")
+            # Confirmaton on the terminal
+            print(f"L-curve plot saved: {plot_path}.png, .svg, .pkl")
 
         return beta_opt
-
-        
-
-
-
-
-
-        
-
-
 
 
 
@@ -1135,6 +1156,9 @@ if __name__ == "__main__":
     #updater.find_beta("vase1", 19, ["h0","L","R0"])
 
     #updater.search_opt("vase1", 0.3, 3e-1, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
-    updater.search_opt("vase1", 0.3, 3e-2, 0, 0.001, 0, 0, 0, 0, 20)
+    #updater.search_opt("vase1", 0.3, 3e-2, 0, 0.001, 0, 0, 0, 0, 20)
+
+    add_values = {"h0": 0, "L": 0.001, "R0": 0, "Rp": 0, "Rd": 0, "E": 0}
+    updater.plot_iter("vase1", 3e-2, add_values, openBF_dir, 20)
 
 
