@@ -291,20 +291,26 @@ class OPENBF_Jacobian:
             beta_opt = self.find_beta(vessel, knumber, valid_parameters, plot=True)
 
             # Regularizing the solution of the LS-problem
-            JkT_Jk = Jk.T @ Jk # Jacobian transpose times the Jacobian with M matrix
-            A_matrix = JkT_Jk + beta_opt**2 * np.eye(len(valid_parameters))
+            W1 = np.eye(len(Jk)) # Weighting matrix
+            W2 = np.eye(len(valid_parameters)) # W2=L2.T@L2, L2 = Regularizaton matrix
+            JkT_Jk = Jk.T @ Jk # Jacobian transpose times the Jacobian
+            JkT_W1_Jk = Jk.T @ W1 @ Jk # Jacobian transpose times the Jacobian with W1 matrix
+            A_matrix = JkT_W1_Jk + beta_opt**2 * W2
 
             # Checks if it is invertible
             # Calculates the rank
             threshold = 1e-12 # threshold to consider a number equivalent to zero
             u_JkT_Jk, s_JkT_Jk, vh_JkT_Jk = np.linalg.svd(JkT_Jk)
             rank_JkT_Jk = np.sum(s_JkT_Jk > threshold)
+            u_JkT_W1_Jk, s_JkT_W1_Jk, vh_JkT_W1_Jk = np.linalg.svd(JkT_W1_Jk)
+            rank_JkT_W1_Jk = np.sum(s_JkT_W1_Jk > threshold)
             u_A, s_A, vh_A = np.linalg.svd(A_matrix)
             rank_A = np.sum(s_A > threshold)
 
             # Checks the singularity of matrices
             matrices = [
                 (JkT_Jk, rank_JkT_Jk, f"JkT @ Jk matrix"),
+                (JkT_W1_Jk, rank_JkT_W1_Jk, f"JkT @ W1 @ Jk matrix"),
                 (A_matrix, rank_A, f"(JkT @ Jk + beta^2 * I) matrix")
             ]
 
@@ -387,8 +393,10 @@ class OPENBF_Jacobian:
         # Finds optimal beta
         beta_opt = self.find_beta(vessel, knumber, valid_parameters, plot=False)
 
-        # Creates the B matriz
-        B = Jk.T @ R_matrix - beta_opt**2 * (k_param_data - k0_param_data)
+        # Creates the regularized B matriz
+        W1 = np.eye(len(Jk)) # Weighting matrix
+        W2 = np.eye(len(valid_parameters)) # W2=L2.T@L2, L2 = Regularizaton matrix
+        B = Jk.T @ W1 @ R_matrix - beta_opt**2 * W2 @ (k_param_data - k0_param_data)
 
         # Where the B matrix files will be
         B_dir = os.path.join(openBF_dir, "B_matrix")
@@ -615,9 +623,13 @@ class OPENBF_Jacobian:
             # Creates deltaP matrix
             deltaP_matrix = kplus_data - k_data
 
+            # W1 and W2 matrices
+            W1 = np.eye(len(Jk_data)) # Weighting matrix
+            W2 = np.eye(len(valid_parameters)) # W2=L2.T@L2, L2 = Regularizaton matrix
+
             # Calculates the squared error of the output of iteration k with respect to the patient output
-            Y = patient_data - yk_data - Jk_data @ np.atleast_1d(deltaP_matrix)
-            Y_error = 0.5 * (Y.T @ Y)
+            Y = patient_data - yk_data
+            Y_error = 0.5 * (Y.T @ W1 @ Y)
 
             # Stores it to plot
             Y_error_append.append(Y_error)
@@ -626,8 +638,8 @@ class OPENBF_Jacobian:
             beta_opt = self.find_beta(vessel, knumber, valid_parameters, plot=False)
 
             # Calculates the squared error of the parameters
-            param = np.eye(len(valid_parameters)) @ np.atleast_1d(deltaP_matrix)
-            param_error = 0.5 * beta_opt**2 * (param.T @ param)
+            param = np.atleast_1d(deltaP_matrix) # Verificar se é delta P mesmo
+            param_error = 0.5 * beta_opt**2 * (param.T @ W2 @ param)
 
             # Stores it to plot
             param_error_append.append(param_error)
@@ -1033,15 +1045,15 @@ class OPENBF_Jacobian:
 
         for file_path in required_files:
             if not os.path.exists(file_path):
-                raise SystemExit(f"Error: Required file '{file_path}' not found. Execution stopped.")
+                raise SystemExit(f"Error: Required /file '{file_path}' not found. Execution stopped.")
 
 
         # Loads files ignoring comments
         patient_data = np.loadtxt(patient_file, comments="#")[:, 3] # Takes only the 4ª column
         yk_data = np.loadtxt(yk_file, comments="#")[:, 3] # Takes only the 4ª column
         Jk_data = np.loadtxt(Jk_file, comments="#")
-        k0_data = np.loadtxt(k0_param_file, comments="#")
-        k_data = np.loadtxt(k_param_file, comments="#")
+        k0_data = np.atleast_1d(np.loadtxt(k0_param_file, comments="#"))
+        k_data = np.atleast_1d(np.loadtxt(k_param_file, comments="#"))
 
         # Corrects Jk dimension 
         if Jk_data.ndim == 1:
@@ -1052,13 +1064,23 @@ class OPENBF_Jacobian:
 
         for beta in beta_values:
 
+            # Regularizing matrices
+            W1 = np.eye(len(Jk_data)) # Weighting matrix
+            W2 = np.eye(len(valid_parameters)) # W2=L2.T@L2, L2 = Regularizaton matrix
+
             # Creates the A matrix
-            I = np.eye(len(valid_parameters))
-            A = Jk_data.T @ Jk_data + beta**2 * I
+            A = Jk_data.T @ W1 @ Jk_data + beta**2 * W2
 
             # Creates the B matrix
             R_matrix = patient_data - yk_data
-            B = Jk_data.T @ R_matrix - beta**2 * (k_data - k0_data)
+            k_star = k0_data
+            print(Jk_data.T.shape)
+            print(W1.shape)
+            print(R_matrix.shape)
+            print(W2.shape)
+            print(k_data.shape)
+            print(k_star.shape)
+            B = Jk_data.T @ W1 @ R_matrix - beta**2 * W2 @ (k_data - k_star)
 
             # Adjusting the dimensions to use np.lingalg.solve
             if B.ndim == 0:
@@ -1075,35 +1097,28 @@ class OPENBF_Jacobian:
             
 
             # Calculates the squared error of the output of iteration k with respect to the patient output
-            residual = patient_data - yk_data - Jk_data @ dp
-            residual_norm = (residual.T @ residual)
+            residual = patient_data - yk_data
+            residual_norm = (residual.T @ W1 @ residual)
 
             # Stores it to plot
             residual_append.append(residual_norm)
 
             # Calculates the squared error of the parameters
-            solution = np.eye(len(valid_parameters)) @ dp 
-            solution_norm = (solution.T @ solution)
+            solution = k_data - k_star 
+            solution_norm = (solution.T @ W2 @ solution)
 
             # Stores it to plot
             solution_append.append(solution_norm)
 
 
         # Curvature in log-log space
-        x = np.log(np.array(residual_append))
-        y = np.log(np.array(solution_append))
+        x_log = np.log(np.array(residual_append))
+        y_log = np.log(np.array(solution_append))
 
-        dx = np.gradient(x)
-        dy = np.gradient(y)
-        ddx = np.gradient(dx)
-        ddy = np.gradient(dy)
+        # Finding the point of minimum distance of the origin
+        idx_opt = np.argmin(x_log**2 + y_log**2)
 
-        curvature = np.abs(dx * ddy - dy * ddx) / (dx**2 + dy**2)**1.5
-        curvature = np.nan_to_num(curvature)  # replaces NaN for 0
-
-        idx_opt = np.argmax(curvature)
         beta_opt = beta_values[idx_opt]
-
         print(f"Optimal β found: {beta_opt:.3e}")
     
         if plot:
@@ -1120,7 +1135,15 @@ class OPENBF_Jacobian:
             plt.title(f'L-curve - {vessel}')
             plt.legend()
             plt.grid(True, which="both")
-            plt.tight_layout()
+
+            # # Força ticks em log
+            # plt.xscale("log")
+            # plt.yscale("log")
+
+            # Notação científica nos eixos
+            #plt.ticklabel_format(style='sci', axis='both', scilimits=(0,0))
+
+            # plt.tight_layout()
 
             plot_path = os.path.join(plot_dir, f"Lcurve_{vessel}_k{knumber}")
             plt.savefig(f"{plot_path}.png", dpi=300)
@@ -1153,12 +1176,6 @@ if __name__ == "__main__":
 
     #updater.diagnose_scales("vase1", 20, 1e9, ["h0","L","R0"])
 
-    #updater.find_beta("vase1", 19, ["h0","L","R0"])
-
-    #updater.search_opt("vase1", 0.3, 3e-1, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
-    #updater.search_opt("vase1", 0.3, 3e-2, 0, 0.001, 0, 0, 0, 0, 20)
-
-    add_values = {"h0": 0, "L": 0.001, "R0": 0, "Rp": 0, "Rd": 0, "E": 0}
-    updater.plot_iter("vase1", 3e-2, add_values, openBF_dir, 20)
+    updater.search_opt("vase1", 0.3, 4e-1, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
 
 
