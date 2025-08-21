@@ -7,6 +7,8 @@ import pickle
 import numpy as np
 import time
 import sys
+from scipy.signal import savgol_filter
+
 
 from julia import Main
 from matplotlib.ticker import ScalarFormatter
@@ -396,7 +398,8 @@ class OPENBF_Jacobian:
         # Creates the regularized B matriz
         W1 = np.eye(len(Jk)) # Weighting matrix
         W2 = np.eye(len(valid_parameters)) # W2=L2.T@L2, L2 = Regularizaton matrix
-        B = Jk.T @ W1 @ R_matrix - beta_opt**2 * W2 @ (k_param_data - k0_param_data)
+        k_star = k0_param_data
+        B = Jk.T @ W1 @ R_matrix - beta_opt**2 * W2 @ (k_param_data - k_star)
 
         # Where the B matrix files will be
         B_dir = os.path.join(openBF_dir, "B_matrix")
@@ -473,7 +476,7 @@ class OPENBF_Jacobian:
                                         f"Pdk_{vessel}.last")
 
         if os.path.exists(param_path):
-            param_data = np.loadtxt(param_path).reshape(-1, 1)
+            param_data = np.loadtxt(param_path).ravel() # Ensures vector (n_params,)
         else:
             raise SystemExit(f"Error: Pdk matrix file not found - {param_path}. Execution stopped.")
 
@@ -503,10 +506,13 @@ class OPENBF_Jacobian:
 
         # Creates the optimized parameters (Pd(k+1)) matrix
         deltaP_matrix = np.linalg.solve(A_data,B_data)
-        deltaP_matrix = deltaP_matrix.ravel()   # Ensures vector (n_params,)
         print("Shape of deltaP is:", deltaP_matrix.shape)
+        deltaP_matrix = deltaP_matrix.ravel()   # Ensures vector (n_params,)
+        print("Fixed shape of deltaP is:", deltaP_matrix.shape)
+
+        print("Shape param_data:", param_data.shape)
         opt_param_data = param_data + alpha * deltaP_matrix
-        print(f"Optimized parameters (Pdk+1): {opt_param_data.flatten()}")
+        print(f"Optimized parameters (Pdk+1): {opt_param_data}, shape: {opt_param_data.shape}")
 
         # Saves the optimized parameters matrix in a file
         opt_param_file = os.path.join(opt_param_dir, f"Pdk_{vessel}.last")
@@ -516,7 +522,7 @@ class OPENBF_Jacobian:
         # Checking optimized parameters: prevents negative values
         if np.any(opt_param_data < 0):
             raise ValueError(
-                f"Invalid parameter: Negative value detected in {opt_param_data.flatten()}.\n"
+                f"Invalid parameter: Negative value detected in {opt_param_data}.\n"
                 f"Check the value of alpha or the input data."
             )
 
@@ -1074,12 +1080,6 @@ class OPENBF_Jacobian:
             # Creates the B matrix
             R_matrix = patient_data - yk_data
             k_star = k0_data
-            print(Jk_data.T.shape)
-            print(W1.shape)
-            print(R_matrix.shape)
-            print(W2.shape)
-            print(k_data.shape)
-            print(k_star.shape)
             B = Jk_data.T @ W1 @ R_matrix - beta**2 * W2 @ (k_data - k_star)
 
             # Adjusting the dimensions to use np.lingalg.solve
@@ -1097,26 +1097,43 @@ class OPENBF_Jacobian:
             
 
             # Calculates the squared error of the output of iteration k with respect to the patient output
-            residual = patient_data - yk_data
+            residual = patient_data - yk_data - Jk_data @ dp
             residual_norm = (residual.T @ W1 @ residual)
 
             # Stores it to plot
             residual_append.append(residual_norm)
 
             # Calculates the squared error of the parameters
-            solution = k_data - k_star 
+            solution = dp 
             solution_norm = (solution.T @ W2 @ solution)
 
             # Stores it to plot
             solution_append.append(solution_norm)
 
+        # Low-pass filter
+        low_residual = savgol_filter(residual_append, window_length=15, polyorder=3)
+        low_solution = savgol_filter(solution_append, window_length=15, polyorder=3)
 
-        # Curvature in log-log space
-        x_log = np.log(np.array(residual_append))
-        y_log = np.log(np.array(solution_append))
+
+        x_log = np.log(np.array(low_residual))
+        y_log = np.log(np.array(low_solution))
 
         # Finding the point of minimum distance of the origin
-        idx_opt = np.argmin(x_log**2 + y_log**2)
+        idx_opt = np.argmin(np.sqrt(x_log**2 + y_log**2))
+
+        # x = np.log(np.array(low_residual))
+        # y = np.log(np.array(low_solution))
+
+        # dx = np.gradient(x)
+        # dy = np.gradient(y)
+        # ddx = np.gradient(dx)
+        # ddy = np.gradient(dy)
+
+        # curvature = np.abs(dx * ddy - dy * ddx) / (dx**2 + dy**2)**1.5
+        # curvature = np.nan_to_num(curvature)  # replaces NaN for 0
+
+        # idx_opt = np.argmax(curvature)
+
 
         beta_opt = beta_values[idx_opt]
         print(f"Optimal β found: {beta_opt:.3e}")
@@ -1127,14 +1144,15 @@ class OPENBF_Jacobian:
             os.makedirs(plot_dir, exist_ok=True)
 
             # Plot
-            fig = plt.figure(figsize=(8, 6))
-            plt.loglog(residual_append, solution_append, marker='o', linestyle='-', color='tab:red')
-            plt.scatter(residual_append[idx_opt], solution_append[idx_opt], color='blue', s=80, label=f"β ótimo={beta_opt:.1e}")
+            fig = plt.figure(figsize=(11, 6))
+            plt.loglog(low_residual, low_solution, marker='o', linestyle='-', color='tab:red')
+            plt.scatter(low_residual[idx_opt], low_solution[idx_opt], color='blue', s=80, label=f"β ótimo={beta_opt:.1e}")
             plt.xlabel('Residual norm')
             plt.ylabel('Solution norm')
             plt.title(f'L-curve - {vessel}')
             plt.legend()
             plt.grid(True, which="both")
+            plt.tight_layout()
 
             # # Força ticks em log
             # plt.xscale("log")
@@ -1176,6 +1194,9 @@ if __name__ == "__main__":
 
     #updater.diagnose_scales("vase1", 20, 1e9, ["h0","L","R0"])
 
-    updater.search_opt("vase1", 0.3, 4e-1, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+    #updater.search_opt("vase1", 0.3, 4e-1, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+
+    updater.find_beta("vase1", 4, ["h0","L","R0"], plot=True)
+
 
 
