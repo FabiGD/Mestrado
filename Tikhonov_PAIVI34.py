@@ -317,7 +317,7 @@ class OPENBF_Jacobian:
             W1 = np.diag(1 / np.maximum(np.abs(z), epsilon)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularizaton matrix
+            W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Regularizing the solution of the LS-problem
             JkT_Jk = Jk.T @ Jk # Jacobian transpose times the Jacobian
@@ -426,7 +426,7 @@ class OPENBF_Jacobian:
         W1 = np.diag(1 / np.maximum(np.abs(z), epsilon)) # Weighting matrix
 
         P = k0_param_data
-        W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularizaton matrix
+        W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
 
         # Creates the regularized B matriz
         k_star = k0_param_data
@@ -606,7 +606,7 @@ class OPENBF_Jacobian:
 
         print(f"Updated YAML saved in: {output_yaml_path}")
 
-    def plot_error(self, vessel, beta, data_dir, valid_parameters, knumber_max):
+    def plot_error(self, vessel, beta, valid_parameters, knumber_max):
         # Plots the total error vs. iteration
 
         plt.close('all')
@@ -666,10 +666,10 @@ class OPENBF_Jacobian:
             W1 = np.diag(1 / np.maximum(np.abs(z), epsilon)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularizaton matrix
+            W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Calculates the squared error of the output of iteration k with respect to the patient output
-            Y = patient_data - yk_data
+            Y = patient_data - yk_data - Jk_data @ deltaP_matrix
             Y_error = 0.5 * (Y.T @ W1 @ Y)
 
             # Stores it to plot
@@ -690,7 +690,7 @@ class OPENBF_Jacobian:
         iterations = np.arange(0, knumber_max + 1)
 
         # Plots directory
-        plots_dir = os.path.join(data_dir, f"iteration_plots_beta={beta:.0e}")
+        plots_dir = os.path.join(openBF_dir, f"iteration_plots_beta={beta:.0e}")
         os.makedirs(plots_dir, exist_ok=True)
 
         # 1. y_error plot
@@ -750,13 +750,13 @@ class OPENBF_Jacobian:
         print(f" - {plot_path3}.png, .svg, .pkl")
 
 
-    def plot_iter(self, vessel, beta, delta_dict, data_dir: str, knumber_max: int):
+    def plot_iter(self, vessel, beta, delta_dict, knumber_max: int):
         """Plots the parameters with delta ≠ 0 and their relative differences from the patient."""
 
         plt.close('all')
 
         file_template = 'Pdk_{}.last'
-        plots_dir = os.path.join(data_dir, f"iteration_plots_beta={beta:.0e}")
+        plots_dir = os.path.join(openBF_dir, f"iteration_plots_beta={beta:.0e}")
         os.makedirs(plots_dir, exist_ok=True)
 
         patient_parameters = "Pm"
@@ -1000,10 +1000,10 @@ class OPENBF_Jacobian:
             self.iteration(knumber, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E)
 
         # Plots RMSE for k from 0 to knumber_max
-        self.plot_error(vase, beta, openBF_dir, valid_parameters, knumber_max)
+        self.plot_error(vase, beta, valid_parameters, knumber_max)
 
         # Plots the parameters for each iteration
-        self.plot_iter(vase, beta, add_values, openBF_dir, knumber_max)
+        self.plot_iter(vase, beta, add_values, knumber_max)
 
         # Ends chronometer and prints time
         end = time.time()
@@ -1111,7 +1111,7 @@ class OPENBF_Jacobian:
             W1 = np.diag(1 / np.maximum(np.abs(z), epsilon)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularizaton matrix
+            W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
             #W2 = np.eye(len(valid_parameters)) 
 
             # Creates the A matrix
@@ -1194,15 +1194,6 @@ class OPENBF_Jacobian:
             plt.grid(True, which="both")
             plt.tight_layout()
 
-            # # Força ticks em log
-            # plt.xscale("log")
-            # plt.yscale("log")
-
-            # Notação científica nos eixos
-            #plt.ticklabel_format(style='sci', axis='both', scilimits=(0,0))
-
-            # plt.tight_layout()
-
             plot_path = os.path.join(plot_dir, f"Lcurve_{vessel}_k{knumber}")
             plt.savefig(f"{plot_path}.png", dpi=300)
             plt.savefig(f"{plot_path}.svg")
@@ -1233,8 +1224,9 @@ if __name__ == "__main__":
     # search_opt(self, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
 
     #updater.diagnose_scales("vase1", 20, 1e9, ["h0","L","R0"])
+    #updater.find_beta("vase1", 7, ["h0","L","R0"], plot=True)
 
-    updater.search_opt("vase1", 0.3, 5e-1, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+    updater.search_opt("vase1", 0.3, 6e-1, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
 
 
 
