@@ -282,7 +282,6 @@ class OPENBF_Jacobian:
         """ Creates the A_matrix using the Jacobian matrix and saves it in the folder: "A_matrix_beta={beta:.0e}"."""
 
         file_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt")
-        print_path = os.path.join(openBF_dir, f"A_matrix_beta={beta:.0e}", f"condition_{vessel}_k{knumber}.txt")
 
 
         if os.path.exists(file_path):
@@ -324,42 +323,6 @@ class OPENBF_Jacobian:
             JkT_W1_Jk = Jk.T @ W1 @ Jk # Jacobian transpose times the Jacobian with W1 matrix
             A_matrix = JkT_W1_Jk + beta_opt**2 * W2
 
-            # Checks if it is invertible
-            # Calculates the rank
-            threshold = 1e-12 # threshold to consider a number equivalent to zero
-            u_JkT_Jk, s_JkT_Jk, vh_JkT_Jk = np.linalg.svd(JkT_Jk)
-            rank_JkT_Jk = np.sum(s_JkT_Jk > threshold)
-            u_JkT_W1_Jk, s_JkT_W1_Jk, vh_JkT_W1_Jk = np.linalg.svd(JkT_W1_Jk)
-            rank_JkT_W1_Jk = np.sum(s_JkT_W1_Jk > threshold)
-            u_A, s_A, vh_A = np.linalg.svd(A_matrix)
-            rank_A = np.sum(s_A > threshold)
-
-            # Checks the singularity of matrices
-            matrices = [
-                (JkT_Jk, rank_JkT_Jk, f"JkT @ Jk matrix"),
-                (JkT_W1_Jk, rank_JkT_W1_Jk, f"JkT @ W1 @ Jk matrix"),
-                (A_matrix, rank_A, f"(JkT @ Jk + beta^2 * I) matrix")
-            ]
-
-            # Prints and saves in a file the condition number and the status of the matrices
-            os.makedirs(os.path.dirname(print_path), exist_ok=True)
-
-            with open(print_path, "w") as log:
-                for matrix, rank, desc in matrices:
-                    msg_cond = f"{desc} rank: {rank:.2e}"
-                    msg_status = (
-                        f"Warning: The {desc} is rank-deficient (non-invertible)."
-                        if rank < min(matrix.shape)
-                        else f"The {desc} is full-rank (invertible)."
-                    )
-                    print(msg_cond)
-                    print(msg_status)
-                    log.write(msg_cond + "\n")
-                    log.write(msg_status + "\n")
-                    log.write("\n")
-                print(f"beta = {beta:.0e}")
-                log.write(f"beta = {beta:.0e} \n")
-
             # Saves A matrix 
             output_dir = os.path.join(openBF_dir, f"A_matrix_beta={beta:.0e}")
             os.makedirs(output_dir, exist_ok=True)  # Creates the folder if it does not exist
@@ -375,7 +338,6 @@ class OPENBF_Jacobian:
 
         # Path to the jacobian matrix file
         file_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt")
-
         if os.path.exists(file_path):
             Jk = np.loadtxt(file_path) # Loads the Jacobian matrix
         else:
@@ -383,20 +345,17 @@ class OPENBF_Jacobian:
 
         # Loads the data from the patient openBF output - ym
         patient_output = os.path.join(openBF_dir, f"ym - openBF output paciente", f"{vessel}_stacked.last")
-
         if not os.path.exists(patient_output):
             raise SystemExit(f"Error: Patient output file not found - {patient_output}")
-
         patient_data = np.loadtxt(patient_output, comments="#")[:, 3] # Only takes the 3rd knot
 
         # Loads the simulation output corresponding to the guess
         yk_output = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
-
         if not os.path.exists(yk_output):
             raise SystemExit(f"Error: Output file for iteration {knumber} not found - {yk_output}")
-
         yk_data = np.loadtxt(yk_output, comments="#")[:, 3] # Only takes the 3rd knot
 
+        # Residual matrix
         R_matrix = patient_data - yk_data
 
         # Loads the iteration k paramaters and initial parameters (Pdk and Pd0)
@@ -417,6 +376,13 @@ class OPENBF_Jacobian:
         else:
             raise SystemExit(f"Error: Iteration parameters file not found - {k_param_file}")
         
+        # Loads the star paramaters (reliable guess)
+        kstar_param_file = os.path.join(openBF_dir, f"Pd_star_{vessel}.txt")
+        if os.path.exists(kstar_param_file):
+            kstar_data = np.loadtxt(kstar_param_file)
+        else:
+            raise SystemExit(f"Error: Star paramaters (reliable guess) file not found - {kstar_param_file}")
+        
         # Finds optimal beta
         beta_opt = self.find_beta(vessel, knumber, valid_parameters, plot=False)
 
@@ -429,8 +395,7 @@ class OPENBF_Jacobian:
         W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
 
         # Creates the regularized B matriz
-        k_star = k0_param_data
-        B = Jk.T @ W1 @ R_matrix - beta_opt**2 * W2 @ (k_param_data - k_star)
+        B = Jk.T @ W1 @ R_matrix - beta_opt**2 * W2 @ (k_param_data - kstar_data)
 
         # Where the B matrix files will be
         B_dir = os.path.join(openBF_dir, "B_matrix")
@@ -545,6 +510,49 @@ class OPENBF_Jacobian:
         opt_param_data = param_data + alpha * deltaP_matrix
         print(f"Optimized parameters (Pdk+1): {opt_param_data}, shape: {opt_param_data.shape}")
 
+        # Checks rank for A_data
+        threshold = 1e-12 # threshold to consider a number equivalent to zero
+        u_A, s_A, vh_A = np.linalg.svd(A_data)
+        rank_A = np.sum(s_A > threshold)
+
+        # Checks condition number for A_data @ deltaP_matrix
+        threshold_cond = 1e6 # threshold to consider ill-conditioned
+        cond_AdP = np.linalg.norm(A_data) * (np.linalg.norm(deltaP_matrix)/np.linalg.norm(A_data @ deltaP_matrix))
+        print("Condition number of A matrix @ delta P is:", cond_AdP)
+
+        # Prints and saves in a file the rank, condition number and the status of the matrices
+        print_path = os.path.join(openBF_dir, f"A_matrix_beta={beta:.0e}", f"condition_{vessel}_k{knumber}.txt")
+        os.makedirs(os.path.dirname(print_path), exist_ok=True)
+
+        with open(print_path, "w") as log:
+            msg_rank = f"A-matrix rank: {rank_A:.2e}"
+            rank_status = (
+                f"Error: The A-matrix is rank-deficient (non-invertible)."
+                if rank_A < min(A_data.shape)
+                else f"The A-matrix is full-rank (invertible)."
+            )
+            msg_cond = f"(A-matrix @ delta P matrix) condition number: {cond_AdP:.2e}"
+            cond_status = (
+                f"(A-matrix @ delta P matrix) is well-conditioned."
+                if cond_AdP < threshold_cond
+                else f"Warning: The multiplication (A-matrix @ delta P matrix) is ill-conditioned (Condition number >= {threshold_cond:.0e})."
+            )
+            
+            print(msg_rank)
+            print(rank_status)
+            print(msg_cond)
+            print(cond_status)
+
+            log.write(msg_rank + "\n")
+            log.write(rank_status + "\n")
+            log.write(msg_cond + "\n")
+            log.write(cond_status + "\n")
+            log.write("\n")
+
+            print(f"beta = {beta:.0e}")
+            log.write(f"beta = {beta:.0e} \n")
+
+
         # Saves the optimized parameters matrix in a file
         opt_param_file = os.path.join(opt_param_dir, f"Pdk_{vessel}.last")
         np.savetxt(opt_param_file, opt_param_data, fmt="%.14e")
@@ -628,6 +636,7 @@ class OPENBF_Jacobian:
                 k_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
             else:
                 k_param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber}", f"Pdk_{vessel}.last")
+            kstar_param_file = os.path.join(openBF_dir, f"Pd_star_{vessel}.txt")
 
             # Checks if files exist
             required_files = [
@@ -636,7 +645,8 @@ class OPENBF_Jacobian:
                 Jk_file,
                 kplus_param_file,
                 k0_param_file,
-                k_param_file
+                k_param_file,
+                kstar_param_file
             ]
 
             for file_path in required_files:
@@ -651,6 +661,7 @@ class OPENBF_Jacobian:
             kplus_data = np.loadtxt(kplus_param_file, comments="#")
             k0_data = np.loadtxt(k0_param_file, comments="#") # verificar se apago
             k_data = np.loadtxt(k_param_file, comments="#")
+            kstar_data = np.loadtxt(kstar_param_file, comments="#")
 
             # Corrects Jk dimension 
             if Jk_data.ndim == 1:
@@ -679,7 +690,7 @@ class OPENBF_Jacobian:
             beta_opt = self.find_beta(vessel, knumber, valid_parameters, plot=False)
 
             # Calculates the squared error of the parameters
-            param = np.atleast_1d(deltaP_matrix) # Verificar se é delta P mesmo
+            param = np.atleast_1d((kplus_data - kstar_data)) # Verificar se é delta P mesmo
             param_error = 0.5 * beta_opt**2 * (param.T @ W2 @ param)
 
             # Stores it to plot
@@ -1073,6 +1084,7 @@ class OPENBF_Jacobian:
             k_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
         else:
             k_param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber}", f"Pdk_{vessel}.last")
+        kstar_param_file = os.path.join(openBF_dir, f"Pd_star_{vessel}.txt")
 
         # Checks if files exist
         required_files = [
@@ -1081,7 +1093,8 @@ class OPENBF_Jacobian:
             Jk_file,
             kplus_param_file,
             k0_param_file,
-            k_param_file
+            k_param_file,
+            kstar_param_file
         ]
 
         for file_path in required_files:
@@ -1093,8 +1106,11 @@ class OPENBF_Jacobian:
         patient_data = np.loadtxt(patient_file, comments="#")[:, 3] # Takes only the 4ª column
         yk_data = np.loadtxt(yk_file, comments="#")[:, 3] # Takes only the 4ª column
         Jk_data = np.loadtxt(Jk_file, comments="#")
+        kplus_data = np.atleast_1d(np.loadtxt(kplus_param_file, comments="#"))
         k0_data = np.atleast_1d(np.loadtxt(k0_param_file, comments="#"))
         k_data = np.atleast_1d(np.loadtxt(k_param_file, comments="#"))
+        kstar_data = np.atleast_1d(np.loadtxt(kstar_param_file, comments="#"))
+
 
         # Corrects Jk dimension 
         if Jk_data.ndim == 1:
@@ -1119,8 +1135,7 @@ class OPENBF_Jacobian:
 
             # Creates the B matrix
             R_matrix = patient_data - yk_data
-            k_star = k0_data
-            B = Jk_data.T @ W1 @ R_matrix - beta**2 * W2 @ (k_data - k_star)
+            B = Jk_data.T @ W1 @ R_matrix - beta**2 * W2 @ (k_data - kstar_data)
 
             # Adjusting the dimensions to use np.lingalg.solve
             if B.ndim == 0:
@@ -1144,7 +1159,7 @@ class OPENBF_Jacobian:
             residual_append.append(residual_norm)
 
             # Calculates the squared error of the parameters
-            solution = dp 
+            solution = kplus_data - kstar_data
             solution_norm = (solution.T @ W2 @ solution)
 
             # Stores it to plot
@@ -1226,7 +1241,8 @@ if __name__ == "__main__":
     #updater.diagnose_scales("vase1", 20, 1e9, ["h0","L","R0"])
     #updater.find_beta("vase1", 7, ["h0","L","R0"], plot=True)
 
-    updater.search_opt("vase1", 0.3, 6e-1, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+    updater.search_opt("vase1", 0.3, 7e-1, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+
 
 
 
