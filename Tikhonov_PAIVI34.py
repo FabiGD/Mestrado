@@ -39,7 +39,7 @@ class OPENBF_Jacobian:
         self.kstar_file = kstar_txt
 
 
-    def update_yaml(self, knumber, vase, parameter, add_value):
+    def update_yaml(self, knumber, vessel, parameter, add_value):
 
         self.add_value = add_value
         updated_file = os.path.join(openBF_dir, f"updated_{parameter}.yaml")
@@ -56,21 +56,21 @@ class OPENBF_Jacobian:
             print("Error: The 'network' key was not found in the YAML.")
             return
 
-        found = False  # Flag to know if the vase was found
+        found = False  # Flag to know if the vessel was found
 
         for item in yaml_data["network"]:
             print(f" Checking vessel: {item.get('label')}")  # Debug print
-            if item.get("label") == vase:
+            if item.get("label") == vessel:
                 if parameter in item:
                     item[parameter] = item[parameter] + add_value
-                    print(f"Parameter '{parameter}' of vessel '{vase}' updated to: {item[parameter]}")
+                    print(f"Parameter '{parameter}' of vessel '{vessel}' updated to: {item[parameter]}")
                     found = True
                 else:
-                    print(f"Error: Parameter '{parameter}' not found in vessel '{vase}'.")
+                    print(f"Error: Parameter '{parameter}' not found in vessel '{vessel}'.")
                 break
 
         if not found:
-            print(f"Error: Vessel '{vase}' not found in YAML.")
+            print(f"Error: Vessel '{vessel}' not found in YAML.")
 
         # Saves the updated YAML to the updated_file
         with open(updated_file, "w", encoding="utf-8") as f:
@@ -421,7 +421,7 @@ class OPENBF_Jacobian:
             print("Error: The 'network' key was not found in the YAML.")
             return
 
-        found = False  # Flag to know if the vase was found
+        found = False  # Flag to know if the vessel was found
 
         for item in yaml_data["network"]:
             if item.get("label") == vessel:
@@ -613,8 +613,8 @@ class OPENBF_Jacobian:
         # Plots the total error vs. iteration
 
         plt.close('all')
-        Y_error_append = []
-        param_error_append = []
+        residual_error_append = []
+        solution_error_append = []
         
 
         for knumber in range(0, knumber_max + 1):
@@ -674,22 +674,22 @@ class OPENBF_Jacobian:
             P = k0_data
             W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
 
-            # Calculates the squared error of the output of iteration k with respect to the patient output
-            Y = patient_data - yk_data - Jk_data @ deltaP_matrix
-            Y_error = 0.5 * (Y.T @ W1 @ Y)
+            # Calculates the residual norm
+            res = patient_data - yk_data - Jk_data @ deltaP_matrix
+            res_error = 0.5 * (res.T @ W1 @ res)
 
             # Stores it to plot
-            Y_error_append.append(Y_error)
+            residual_error_append.append(res_error)
 
             # Finds optimal beta
-            beta_opt = self.beta_dict.get(knumber, list(self.beta_dict.values())[-1])
+            beta_opt = self.Lcurve_dict.get(knumber, list(self.Lcurve_dict.values())[-1])
             
-            # Calculates the squared error of the parameters
-            param = np.atleast_1d((kplus_data - kstar_data)) 
-            param_error = 0.5 * beta_opt**2 * (param.T @ W2 @ param)
+            # Calculates the solution norm
+            sol = np.atleast_1d((kplus_data - kstar_data)) 
+            sol_error = 0.5 * beta_opt**2 * (sol.T @ W2 @ sol)
 
             # Stores it to plot
-            param_error_append.append(param_error)
+            solution_error_append.append(sol_error)
 
 
         # Iterations: 0 to knumber_max
@@ -699,56 +699,57 @@ class OPENBF_Jacobian:
         plots_dir = os.path.join(openBF_dir, f"iteration_plots_ID={ID}")
         os.makedirs(plots_dir, exist_ok=True)
 
-        # 1. y_error plot
-        fig1 = plt.figure(figsize=(8, 5))
-        plt.plot(iterations, Y_error_append, marker='o', linestyle='-', color='tab:red')
-        plt.xlabel('Iteration')
-        plt.ylabel('y quadratic error (mid-point)')
-        plt.title(f'Squared error of yk with respect to the patient output - {vessel}')
-        plt.grid(True)
-        plt.tight_layout()
-
-        plot_path1 = os.path.join(plots_dir, f"y_error_plot")
-        plt.savefig(f"{plot_path1}.png", dpi=300)
-        plt.savefig(f"{plot_path1}.svg")
-        with open(f"{plot_path1}.pkl", "wb") as f:
-            pickle.dump(fig1, f)
-        plt.close(fig1)
-
-        # 2. param_error plot
-        fig2 = plt.figure(figsize=(8, 5))
-        plt.plot(iterations, param_error_append, marker='s', linestyle='-', color='tab:blue')
-        plt.xlabel('Iteration')
-        plt.ylabel('Parameters quadratic error')
-        plt.title(f'Squared error of parameters - {vessel}')
-        plt.grid(True)
-        plt.tight_layout()
-
-        plot_path2 = os.path.join(plots_dir, f"param_error_plot")
-        plt.savefig(f"{plot_path2}.png", dpi=300)
-        plt.savefig(f"{plot_path2}.svg")
-        with open(f"{plot_path2}.pkl", "wb") as f:
-            pickle.dump(fig2, f)
-        plt.close(fig2)
-
-        # 3. Sum plot
-        total_error_append = np.array(Y_error_append) + np.array(param_error_append)
+        # 1. Sum plot
+        total_error_append = np.array(residual_error_append) + np.array(solution_error_append)
 
         fig3 = plt.figure(figsize=(8, 5))
         plt.plot(iterations, total_error_append, marker='^', linestyle='-', color='tab:green')
-        plt.xlabel('Iteration')
-        plt.ylabel('Total quadratic error')
-        plt.title(f'Sum of parameters and y errors - {vessel}')
+        plt.xlabel('Iterations')
+        plt.ylabel(r'$F = \frac{1}{2} [\|z-h(\theta_0)-J_k(\theta-\theta_0)\|_{W_1}^2 + \beta^2 \|\theta-\theta^*\|_{W_2}^2]$')
+        plt.title(r'Functional: $F = \frac{1}{2} [\|z-h(\theta_0)-J_k(\theta-\theta_0)\|_{W_1}^2 + \beta^2 \|\theta-\theta^*\|_{W_2}^2]$' + f'   ({vessel})')
         plt.grid(True)
         plt.tight_layout()
 
-        plot_path3 = os.path.join(plots_dir, f"total_error_plot")
+        plot_path3 = os.path.join(plots_dir, f"1.Functional")
         plt.savefig(f"{plot_path3}.png", dpi=300)
         plt.savefig(f"{plot_path3}.svg")
         with open(f"{plot_path3}.pkl", "wb") as f:
             pickle.dump(fig3, f)
         plt.close(fig3)
 
+        # 2. residual_error plot
+        fig1 = plt.figure(figsize=(8, 5))
+        plt.plot(iterations, residual_error_append, marker='o', linestyle='-', color='tab:red')
+        plt.xlabel('Iterations')
+        plt.ylabel(r'$\frac{1}{2} \|z-h(\theta_0)-J_k(\theta-\theta_0)\|_{W_1}^2$')
+        plt.title(r'Residual norm: $\frac{1}{2} \|z-h(\theta_0)-J_k(\theta-\theta_0)\|_{W_1}^2$' + f'   ({vessel})')
+        plt.grid(True)
+        plt.tight_layout()
+
+        plot_path1 = os.path.join(plots_dir, f"2.Residual_norm")
+        plt.savefig(f"{plot_path1}.png", dpi=300)
+        plt.savefig(f"{plot_path1}.svg")
+        with open(f"{plot_path1}.pkl", "wb") as f:
+            pickle.dump(fig1, f)
+        plt.close(fig1)
+
+        # 3. solution_error plot
+        fig2 = plt.figure(figsize=(8, 5))
+        plt.plot(iterations, solution_error_append, marker='s', linestyle='-', color='tab:blue')
+        plt.xlabel('Iterations')
+        plt.ylabel(r'$\frac{1}{2} \beta^2 \|\theta-\theta^*\|_{W_2}^2$')
+        plt.title(r'Solution norm: $\frac{1}{2}\beta^2 \|\theta-\theta^*\|_{W_2}^2$' + f'   ({vessel})')
+        plt.grid(True)
+        plt.tight_layout()
+
+        plot_path2 = os.path.join(plots_dir, f"3.Solution_norm")
+        plt.savefig(f"{plot_path2}.png", dpi=300)
+        plt.savefig(f"{plot_path2}.svg")
+        with open(f"{plot_path2}.pkl", "wb") as f:
+            pickle.dump(fig2, f)
+        plt.close(fig2)
+
+        
         # Confirmation in the terminal
         print("Plots saved:")
         print(f" - {plot_path1}.png, .svg, .pkl")
@@ -774,16 +775,16 @@ class OPENBF_Jacobian:
 
         all_parameters = ["h0", "L", "R0", "E", "Rp", "Rd"]
         param_labels = {
-            "h0": "h0 - Wall thickness [m]",
-            "L": "L - Length [m]",
-            "R0": "R0 - Lumen radius [m]",
-            "E": "E - Elastic modulus [Pa]",
-            "Rp": "Rp - Proximal radius [m]",
-            "Rd": "Rd - Distal radius [m]"
-        }
+            "h0": "Wall thickness (h0) [m]",
+            "L": "Length (L) [m]",
+            "R0": "Lumen radius (R0) [m]",
+            "E": "Elastic modulus (E) [Pa]",
+            "Rp": "Proximal radius (Rp) [m]",
+            "Rd": "Distal radius (Rd) [m]"
+            }
 
         valid_params = [p for p in all_parameters if delta_dict.get(p, 0) != 0]
-        param_series = {p: [] for p in valid_params}
+        param_data = {p: [] for p in valid_params}
 
         for folder in folders:
             file_path = os.path.join(self.openBF_dir, folder, file_name)
@@ -792,14 +793,14 @@ class OPENBF_Jacobian:
 
             dados = np.loadtxt(file_path).flatten()
             for i, p in enumerate(valid_params):
-                param_series[p].append(dados[i])
+                param_data[p].append(dados[i])
 
         patient_path = os.path.join(self.openBF_dir, patient_parameters, file_name)
         if not os.path.isfile(patient_path):
             raise SystemExit(f"Error: Patient file not found at {patient_path}. Execution stopped.")
 
         patient_data = np.loadtxt(patient_path).flatten()
-        patient_vals = {p: patient_data[i] for i, p in enumerate(valid_params)}
+        patient_ref = {p: patient_data[i] for i, p in enumerate(valid_params)}
 
         iterations = np.arange(len(folders))
 
@@ -807,19 +808,44 @@ class OPENBF_Jacobian:
         params_main = [p for p in valid_params if p != "E"]
         has_E = "E" in valid_params
 
+        # Plot relative differences (all together, including E)
+        fig2, ax2 = plt.subplots(figsize=(10, 6))
+        for p in valid_params:
+            vals = np.array(param_data[p])
+            ref = patient_ref[p]
+            diff = np.abs(((vals - ref) / ref) * 100)
+            ax2.plot(iterations, diff, marker='o', label=param_labels.get(p, p))
+        ax2.axhline(0, color='gray', linestyle='--', linewidth=1)
+        ax2.set_title(f'Absolute Relative Difference of Parameters (%)  ({vessel})', fontsize=14)
+        ax2.set_xlabel('Iterations', fontsize=14)
+        ax2.set_ylabel(r'$\left|\frac{\theta_0 - \theta_z}{\theta_z}\right| \times 100 \,\%$', fontsize=14)
+        ax2.grid(True)
+        ax2.legend()
+        fig2.tight_layout()
+        rel_diff_path = os.path.join(plots_dir, f"4.Relative_difference")
+        fig2.savefig(f"{rel_diff_path}.png", dpi=300)
+        fig2.savefig(f"{rel_diff_path}.svg")
+        with open(f"{rel_diff_path}.pkl", "wb") as f:
+            pickle.dump(fig2, f)
+        plt.close(fig2)
+        print(f"Saved: {rel_diff_path}.png, .svg, .pkl")
+
         # Absolute plot (without E)
         if params_main:
             fig1, ax1 = plt.subplots(figsize=(10, 6))
             for p in params_main:
-                y = param_series[p]
+                y = param_data[p]
                 label = param_labels.get(p, p)
                 line, = ax1.plot(iterations, y, 'o-', label=label)
-                ax1.axhline(patient_vals[p], linestyle='--', linewidth=2,
-                            color=line.get_color(), label=f'Patient {p}')
-            ax1.set(title=f'Parameters vs Iterations - {vessel}', xlabel='Iterations', ylabel='Parameter Values')
+                ax1.axhline(patient_ref[p], linestyle='--', linewidth=2,
+                            color=line.get_color(), label=f'Patient {p} - ' + r'$(\theta_z)$')
+            ax1.set_title(f'Parameter values vs Iterations   ({vessel})', fontsize=14)
+            ax1.set_xlabel('Iterations', fontsize=14)
+            ax1.set_ylabel('Parameter Values', fontsize=14)
             ax1.grid(True)
             ax1.legend()
-            plot_path = os.path.join(plots_dir, f"{vessel}_plot_all_params")
+            fig1.tight_layout()
+            plot_path = os.path.join(plots_dir, f"5.Parameter_values")
             fig1.savefig(f"{plot_path}.png", dpi=300)
             fig1.savefig(f"{plot_path}.svg")
             with open(f"{plot_path}.pkl", "wb") as f:
@@ -832,39 +858,23 @@ class OPENBF_Jacobian:
             figE, axE = plt.subplots(figsize=(10, 6))
             axE.yaxis.set_major_formatter(ScalarFormatter(useMathText=False))
             axE.ticklabel_format(style='plain', axis='y')
-            yE = param_series["E"]
+            yE = param_data["E"]
             axE.plot(iterations, yE, 'o-', color='tab:red', label=param_labels["E"])
-            axE.axhline(patient_vals["E"], linestyle='--', linewidth=2, color='tab:red', label='Patient E')
-            axE.set(title=f'Elastic Modulus vs Iterations - {vessel}', xlabel='Iterations',
-                    ylabel='Elastic modulus [Pa]')
+            axE.axhline(patient_ref["E"], linestyle='--', linewidth=2, color='tab:red', label='Patient E - ' + r'$(\theta_z)$')
+
+            axE.set_title(f'Elastic Modulus vs Iterations   ({vessel})', fontsize=14)
+            axE.set_xlabel('Iterations', fontsize=14)
+            axE.set_ylabel('Elastic modulus [Pa]', fontsize=14)
             axE.grid(True)
             axE.legend()
-            plot_path_E = os.path.join(plots_dir, f"{vessel}_plot_E_only")
+            figE.tight_layout()
+            plot_path_E = os.path.join(plots_dir, f"6.Elastic_Modulus_values")
             figE.savefig(f"{plot_path_E}.png", dpi=300)
             figE.savefig(f"{plot_path_E}.svg")
             with open(f"{plot_path_E}.pkl", "wb") as f:
                 pickle.dump(figE, f)
             plt.close(figE)
             print(f"Saved: {plot_path_E}.png, .svg, .pkl")
-
-        # Plot relative differences (all together, including E)
-        fig2, ax2 = plt.subplots(figsize=(10, 6))
-        for p in valid_params:
-            vals = np.array(param_series[p])
-            ref = patient_vals[p]
-            diff = (vals - ref) / ref
-            ax2.plot(iterations, diff, marker='o', label=param_labels.get(p, p))
-        ax2.axhline(0, color='gray', linestyle='--', linewidth=1)
-        ax2.set(title=f'Relative Difference of Parameters - {vessel}', xlabel='Iterations', ylabel='Relative Difference')
-        ax2.grid(True)
-        ax2.legend()
-        rel_diff_path = os.path.join(plots_dir, f"{vessel}_relative_diff_plot")
-        fig2.savefig(f"{rel_diff_path}.png", dpi=300)
-        fig2.savefig(f"{rel_diff_path}.svg")
-        with open(f"{rel_diff_path}.pkl", "wb") as f:
-            pickle.dump(fig2, f)
-        plt.close(fig2)
-        print(f"Saved: {rel_diff_path}.png, .svg, .pkl")
 
 
     def file_openBF(self, yaml_file, output_folder_name):
@@ -890,20 +900,20 @@ class OPENBF_Jacobian:
             #self.plot_openBF(vessel, file_dir)
 
 
-    def updated_openBF(self, knumber, vase, parameter, add_value):
+    def updated_openBF(self, knumber, vessel, parameter, add_value):
         """ Updates the value of a parameter within a specific vessel;
         runs openBF in Julia for the updated YAML;
         stacks the output values, calculates the partial derivatives with respect to the modified parameter;
         and plots the graphs (Pressure/Area/Flow/Velocity vs. Time)."""
 
         # Updates the YAML file to the specified parameter
-        self.update_yaml(knumber, vase, parameter, add_value)
+        self.update_yaml(knumber, vessel, parameter, add_value)
 
         # Where the k_file output files are
         base_dir = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}")
         os.makedirs(base_dir, exist_ok=True)
         # Where the updated_file output files will be
-        updated_dir = os.path.join(openBF_dir, f"openBF_updated_{vase}_{parameter}")
+        updated_dir = os.path.join(openBF_dir, f"openBF_updated_{vessel}_{parameter}")
         os.makedirs(updated_dir, exist_ok=True)
 
         # Runs openBF to updated_file
@@ -922,7 +932,7 @@ class OPENBF_Jacobian:
         del_dir = os.path.join(openBF_dir, f"partial_deriv_{parameter}")
 
         # Calculates and creates the partial derivatives files
-        self.partial_deriv_files(vase, base_dir, updated_dir, del_dir, parameter)
+        self.partial_deriv_files(vessel, base_dir, updated_dir, del_dir, parameter)
 
         # Plots the simulation output graphs and saves them
         #self.plot_openBF(vessel, updated_dir)
@@ -964,7 +974,7 @@ class OPENBF_Jacobian:
             self.Pdk(vessel, add_values, param_directory, yaml_file)
 
         # Finds optimal beta
-        beta_opt = self.find_beta(vessel, knumber, plot=True)
+        beta_opt = self.L_curve(vessel, knumber, plot=True)
 
         # Creates the pseudoinverse matrix
         self.A_matrix(ID, beta_opt, vessel, knumber)
@@ -1056,7 +1066,7 @@ class OPENBF_Jacobian:
         print(f"cond(A)            = {cond_A: .3e}")
         print(f"ΔP change (with D vs no D): {rel_step_change: .3e}")
 
-    def find_beta(self, vessel, knumber, plot=True):
+    def L_curve(self, vessel, knumber, plot=True):
         # To generate the L-curve and find beta_opt, you don't need a specific β beforehand: 
         # you only need the iterations of the model without regularization or with a fixed 
         # initial β used to generate the files.
@@ -1214,15 +1224,148 @@ class OPENBF_Jacobian:
             print(f"L-curve plot saved: {plot_path}.png, .svg, .pkl")
 
         # Creates a dictionary with the beta's
-        if not hasattr(self, "beta_dict"):
-            self.beta_dict = {}
+        if not hasattr(self, "Lcurve_dict"):
+            self.Lcurve_dict = {}
         
-        self.beta_dict[knumber] = beta_opt
-        print(self.beta_dict)
+        self.Lcurve_dict[knumber] = beta_opt
+        print(self.Lcurve_dict)
 
         # Returns the beta corresponding to iteration k
         return beta_opt
+    
+    def Morozov(self, vessel, knumber, plot=True):
+    
+        if plot:
+            plt.close('all')
 
+        diff_append = []
+        kplus = knumber + 1
+
+        # Files paths
+        patient_file = os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last")
+        yk_file = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
+        Jk_file = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt")
+        k0_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
+        kplus_param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{kplus}", f"Pdk_{vessel}.last")
+        if knumber == 0:
+            k_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
+        else:
+            k_param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber}", f"Pdk_{vessel}.last")
+        kstar_param_file = self.kstar_file
+
+        # Checks if files exist
+        required_files = [
+            patient_file,
+            yk_file,
+            Jk_file,
+            k0_param_file,
+            kplus_param_file,
+            k_param_file,
+            kstar_param_file
+        ]
+
+        for file_path in required_files:
+            if not os.path.exists(file_path):
+                raise SystemExit(f"Error: Required file '{file_path}' not found. Execution stopped.")
+
+
+        # Loads files ignoring comments
+        patient_data = np.loadtxt(patient_file, comments="#")[:, 3] # Takes only the 4ª column
+        yk_data = np.loadtxt(yk_file, comments="#")[:, 3] # Takes only the 4ª column
+        Jk_data = np.loadtxt(Jk_file, comments="#")
+        k0_data = np.atleast_1d(np.loadtxt(k0_param_file, comments="#"))
+        kplus_data = np.atleast_1d(np.loadtxt(kplus_param_file, comments="#"))
+        k_data = np.atleast_1d(np.loadtxt(k_param_file, comments="#"))
+        kstar_data = np.atleast_1d(np.loadtxt(kstar_param_file, comments="#"))
+
+
+        # Corrects Jk dimension 
+        if Jk_data.ndim == 1:
+            Jk_data = Jk_data.reshape(-1, 1) # (200,) -> (200,1)
+
+        # Creates 1000 points of beta
+        beta_values = np.logspace(-8, 2, 1000)   # 1000 points between 1e-8 e 1e2
+
+        # Definir nível de ruído
+        def generateMeasurements(A, f, delta=1e-2):
+            m = A @ f
+            noise = np.random.randn(len(f))
+            noise = noise / np.linalg.norm(noise)
+            md = m + delta * noise
+
+            return m,md
+
+        delta = 1e-3 * np.linalg.norm(patient_data)   # exemplo: 0.1% do sinal do paciente
+
+        discrepancy = []
+
+        for beta in beta_values:
+
+            # Regularizing matrices
+            epsilon = 1e-8
+            z = patient_data
+            W1 = np.diag(1 / np.maximum(np.abs(z), epsilon)) # Weighting matrix
+
+            P = k0_data
+            W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
+            #W2 = np.eye(len(valid_parameters)) 
+
+            # Creates the A matrix
+            A = Jk_data.T @ W1 @ Jk_data + beta**2 * W2
+
+            # Creates the B matrix
+            R_matrix = patient_data - yk_data
+            B = Jk_data.T @ W1 @ R_matrix - beta**2 * W2 @ (k_data - kstar_data)
+
+            # Adjusting the dimensions to use np.lingalg.solve
+            if B.ndim == 0:
+                B = np.array([B])     # scalar becomes 1D vector
+            if B.ndim == 1:
+                B = B.reshape(-1, 1)  # vector becomes column
+
+            # Solves the equation with the corresponding beta
+            try:
+                dp = np.linalg.solve(A, B)
+                dp = dp.ravel()   # Ensures vector (n_params,)
+            except np.linalg.LinAlgError:
+                raise SystemExit(f"Error: A is not singular (non inversible). Execution stopped.")
+            
+            # Calculates the squared error of the output of iteration k with respect to the patient output
+            residual = patient_data - yk_data - Jk_data @ dp
+            residual_norm = float(residual.T @ W1 @ residual)
+
+            # # Calculates the squared error of the parameters
+            # solution = kplus_data - kstar_data # Pdk+1 - Pd*
+            # solution_norm = float(solution.T @ W2 @ solution)
+
+            # Diferença em relação ao nível de ruído esperado
+            discrepancy.append(abs(residual_norm - delta**2))
+
+        # Encontrar índice do beta ótimo
+        idx_opt = int(np.argmin(np.abs(discrepancy)))
+        beta_opt = beta_values[idx_opt]
+
+        if plot:
+            plt.figure()
+            plt.loglog(beta_values, discrepancy, 'bo-')
+            plt.title(f'alpha Morozov: %1.2g' % beta_values[idx_opt])
+            plt.loglog(beta_values, delta * np.ones_like(beta_values), '--k')
+            plt.loglog(beta_values[idx_opt], discrepancy[idx_opt], 'r.', markersize=20)
+            plt.xlabel(r'$\alpha$')
+            plt.ylabel(r'$|| T_\alpha f_{\alpha,\delta} - m_\delta ||$')
+            plt.grid(True)
+            plt.show()
+
+        # Creates a dictionary with the beta's
+        if not hasattr(self, "Morozov_dict"):
+            self.Morozov_dict = {}
+        
+        self.Morozov_dict[knumber] = beta_opt
+        print(self.Morozov_dict)
+
+        # Returns the beta corresponding to iteration k
+        print(f"The optimal beta for k={knumber} is:", beta_opt)
+        return beta_opt
 
 
 # Application
@@ -1240,5 +1383,11 @@ if __name__ == "__main__":
     #updater.file_openBF(patient_yaml, "ym - openBF output paciente")
 
     # Searches optimized parameters
-    # search_opt(self, vase, alpha, beta, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max)
-    updater.search_opt(16, "vase2", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+    #updater.search_opt(16, "vase2", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+
+    #updater.Morozov("vase2", 10, plot=True)
+
+    # for knumber in range(0,21):
+    #     updater.L_curve("vase2", knumber, plot=True)
+    add_values = {"h0": 0.00001, "L": 0.001, "R0": 0.0001, "Rp": 0, "Rd": 0, "E": 0}
+    updater.plot_iter(16, "vase2", add_values, 20)
