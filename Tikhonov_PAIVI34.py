@@ -895,8 +895,8 @@ class OPENBF_Jacobian:
 
         # Stack openBF outputs for each vessel individually
         # Plots the simulation output graphs and saves them
-        for vessel in vessels:
-            self.stack_last_files(vessel, variables, file_dir)
+        for vessel_stack in vessels:
+            self.stack_last_files(vessel_stack, variables, file_dir)
             #self.plot_openBF(vessel, file_dir)
 
 
@@ -926,7 +926,7 @@ class OPENBF_Jacobian:
 
         # Stack openBF outputs for each vessel individually
         for vessel_stack in vessels:
-            self.stack_last_files(vessel, variables, updated_dir)
+            self.stack_last_files(vessel_stack, variables, updated_dir)
 
         # Path to the partial derivatives directory
         del_dir = os.path.join(openBF_dir, f"partial_deriv_{parameter}")
@@ -972,6 +972,12 @@ class OPENBF_Jacobian:
             param_directory = "Pd0"
 
             self.Pdk(vessel, add_values, param_directory, yaml_file)
+
+        # Calculates the optimized parameters with a initial guess for beta
+        beta_guess = 1e-4  
+        self.A_matrix(ID, beta_guess, vessel, knumber)
+        self.B_matrix(ID, beta_guess, vessel, knumber, valid_parameters)
+        self.optimized_parameters(ID, vessel, alpha, beta_guess, knumber)
 
         # Finds optimal beta
         beta_opt = self.L_curve(vessel, knumber, plot=True)
@@ -1228,7 +1234,6 @@ class OPENBF_Jacobian:
             self.Lcurve_dict = {}
         
         self.Lcurve_dict[knumber] = beta_opt
-        print(self.Lcurve_dict)
 
         # Returns the beta corresponding to iteration k
         return beta_opt
@@ -1364,11 +1369,11 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel2"
-    inlet_dat = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel2/circle_of_willis_inlet.dat"
-    patient_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel2/problema_inverso - Paciente.yaml"
-    k0_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel2/problema_inverso - k=0 - fixed_vessels_1and3.yaml"
-    kstar_txt = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel2/Pd_star_vessel2.txt"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel3"
+    inlet_dat = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel3/circle_of_willis_inlet.dat"
+    patient_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel3/problema_inverso - Paciente.yaml"
+    k0_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel3/problema_inverso - k=0 - fixed_vessels_1and2.yaml"
+    kstar_txt = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel3/Pd_star_vessel3.txt"
 
     updater = OPENBF_Jacobian(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
@@ -1376,4 +1381,4 @@ if __name__ == "__main__":
     #updater.file_openBF(patient_yaml, "ym - openBF output paciente")
 
     # Searches optimized parameters
-    updater.search_opt(17, "vessel2", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+    updater.search_opt(17, "vessel3", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
