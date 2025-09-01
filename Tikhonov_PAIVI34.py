@@ -201,8 +201,8 @@ class OPENBF_Jacobian:
             data[var].append(df)
 
             # data = {
-            #   "P": [df_vase1_P, df_vase2_P, df_vase3_P],
-            #   "u": [df_vase1_u, df_vase2_u, df_vase3_u]
+            #   "P": [df_vessel1_P, df_vessel2_P, df_vessel3_P],
+            #   "u": [df_vessel1_u, df_vessel2_u, df_vessel3_u]
             # }
 
         # Creates folder for saving plots
@@ -890,7 +890,7 @@ class OPENBF_Jacobian:
         self.openBF(yaml_file, file_dir)
 
         # Stacking order of vessels and variables
-        vessels = ["vase1", "vase2", "vase3"]
+        vessels = ["vessel1", "vessel2", "vessel3"]
         variables = ["P", "u"]
 
         # Stack openBF outputs for each vessel individually
@@ -921,11 +921,11 @@ class OPENBF_Jacobian:
         self.openBF(updated_file,updated_dir)
 
         # Stacking order of vessels and variables
-        vessels = ["vase1", "vase2", "vase3"]
+        vessels = ["vessel1", "vessel2", "vessel3"]
         variables = ["P", "u"]
 
         # Stack openBF outputs for each vessel individually
-        for vessel in vessels:
+        for vessel_stack in vessels:
             self.stack_last_files(vessel, variables, updated_dir)
 
         # Path to the partial derivatives directory
@@ -1238,15 +1238,13 @@ class OPENBF_Jacobian:
         if plot:
             plt.close('all')
 
-        diff_append = []
-        kplus = knumber + 1
+        discrepancy = []
 
         # Files paths
         patient_file = os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last")
         yk_file = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
         Jk_file = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt")
         k0_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
-        kplus_param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{kplus}", f"Pdk_{vessel}.last")
         if knumber == 0:
             k_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
         else:
@@ -1259,7 +1257,6 @@ class OPENBF_Jacobian:
             yk_file,
             Jk_file,
             k0_param_file,
-            kplus_param_file,
             k_param_file,
             kstar_param_file
         ]
@@ -1274,7 +1271,6 @@ class OPENBF_Jacobian:
         yk_data = np.loadtxt(yk_file, comments="#")[:, 3] # Takes only the 4ª column
         Jk_data = np.loadtxt(Jk_file, comments="#")
         k0_data = np.atleast_1d(np.loadtxt(k0_param_file, comments="#"))
-        kplus_data = np.atleast_1d(np.loadtxt(kplus_param_file, comments="#"))
         k_data = np.atleast_1d(np.loadtxt(k_param_file, comments="#"))
         kstar_data = np.atleast_1d(np.loadtxt(kstar_param_file, comments="#"))
 
@@ -1286,18 +1282,20 @@ class OPENBF_Jacobian:
         # Creates 1000 points of beta
         beta_values = np.logspace(-8, 2, 1000)   # 1000 points between 1e-8 e 1e2
 
-        # Definir nível de ruído
-        def generateMeasurements(A, f, delta=1e-2):
-            m = A @ f
-            noise = np.random.randn(len(f))
-            noise = noise / np.linalg.norm(noise)
-            md = m + delta * noise
+        # Defines delta
+        # delta = 1e-3 * np.linalg.norm(yk_data)   # 0.1% of the yk data
+        delta = 1e-2
 
-            return m,md
+        # Adds noise to yk_data
+        yk_withnoise = yk_data.copy()  # copies yk_data
 
-        delta = 1e-3 * np.linalg.norm(patient_data)   # exemplo: 0.1% do sinal do paciente
+        # Noise in the first 100 lines (standard deviation = 266.64 Pa)
+        yk_withnoise[:100] += np.random.normal(0, 266.64, size=100)
 
-        discrepancy = []
+        # Noise in the last 100 lines (standard deviation = 3% of the mean)
+        velocity_mean = np.mean(yk_data[-100:])
+        velocity_std = 0.03 * velocity_mean
+        yk_data[-100:] += np.random.normal(0, velocity_std, size=100)
 
         for beta in beta_values:
 
@@ -1308,7 +1306,6 @@ class OPENBF_Jacobian:
 
             P = k0_data
             W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
-            #W2 = np.eye(len(valid_parameters)) 
 
             # Creates the A matrix
             A = Jk_data.T @ W1 @ Jk_data + beta**2 * W2
@@ -1334,10 +1331,6 @@ class OPENBF_Jacobian:
             residual = patient_data - yk_data - Jk_data @ dp
             residual_norm = float(residual.T @ W1 @ residual)
 
-            # # Calculates the squared error of the parameters
-            # solution = kplus_data - kstar_data # Pdk+1 - Pd*
-            # solution_norm = float(solution.T @ W2 @ solution)
-
             # Diferença em relação ao nível de ruído esperado
             discrepancy.append(abs(residual_norm - delta**2))
 
@@ -1351,8 +1344,8 @@ class OPENBF_Jacobian:
             plt.title(f'alpha Morozov: %1.2g' % beta_values[idx_opt])
             plt.loglog(beta_values, delta * np.ones_like(beta_values), '--k')
             plt.loglog(beta_values[idx_opt], discrepancy[idx_opt], 'r.', markersize=20)
-            plt.xlabel(r'$\alpha$')
-            plt.ylabel(r'$|| T_\alpha f_{\alpha,\delta} - m_\delta ||$')
+            plt.xlabel(r'$\beta$')
+            plt.ylabel(r'$|| T_\beta f_{\beta,\delta} - m_\delta ||$')
             plt.grid(True)
             plt.show()
 
@@ -1371,11 +1364,11 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2"
-    inlet_dat = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2/circle_of_willis_inlet.dat"
-    patient_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2/problema_inverso - Paciente.yaml"
-    k0_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2/problema_inverso - k=0 - fixed_vessels_1and3.yaml"
-    kstar_txt = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vase2/Pd_star_vase2.txt"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel2"
+    inlet_dat = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel2/circle_of_willis_inlet.dat"
+    patient_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel2/problema_inverso - Paciente.yaml"
+    k0_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel2/problema_inverso - k=0 - fixed_vessels_1and3.yaml"
+    kstar_txt = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel2/Pd_star_vessel2.txt"
 
     updater = OPENBF_Jacobian(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
@@ -1383,11 +1376,4 @@ if __name__ == "__main__":
     #updater.file_openBF(patient_yaml, "ym - openBF output paciente")
 
     # Searches optimized parameters
-    #updater.search_opt(16, "vase2", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
-
-    #updater.Morozov("vase2", 10, plot=True)
-
-    # for knumber in range(0,21):
-    #     updater.L_curve("vase2", knumber, plot=True)
-    add_values = {"h0": 0.00001, "L": 0.001, "R0": 0.0001, "Rp": 0, "Rd": 0, "E": 0}
-    updater.plot_iter(16, "vase2", add_values, 20)
+    updater.search_opt(17, "vessel2", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
