@@ -49,7 +49,7 @@ class OPENBF_InverseProblem:
         if knumber == 0:
             k_file = os.path.join(openBF_dir, self.k0_file)
         else:
-            k_file = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
+            k_file = os.path.join(openBF_dir, f"inverse_problem_k={knumber}.yaml")
         with open(k_file, "r", encoding="utf-8") as f:
             yaml_data = yaml.safe_load(f) or {}
 
@@ -293,8 +293,8 @@ class OPENBF_InverseProblem:
                 Jk = Jk.reshape(-1, 1)
 
             # Required files paths
-            patient_file = os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last")
-            k0_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
+            patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"{vessel}_stacked.last")
+            k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
             
             # Checks if files exist
             required_files = [
@@ -343,13 +343,13 @@ class OPENBF_InverseProblem:
             raise SystemExit(f"Error: Jacobian matrix file not found - {file_path}")
 
         # Loads the data from the patient openBF output - ym
-        patient_output = os.path.join(openBF_dir, f"ym - openBF output paciente", f"{vessel}_stacked.last")
+        patient_output = os.path.join(openBF_dir, f"ym_openBF_patient_output", f"{vessel}_stacked.last")
         if not os.path.exists(patient_output):
             raise SystemExit(f"Error: Patient output file not found - {patient_output}")
         patient_data = np.loadtxt(patient_output, comments="#")[:, 3] # Only takes the 3rd knot
 
         # Loads the simulation output corresponding to the guess
-        yk_output = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
+        yk_output = os.path.join(openBF_dir, f"y{knumber}_openBF_output_iteration", f"{vessel}_stacked.last")
         if not os.path.exists(yk_output):
             raise SystemExit(f"Error: Output file for iteration {knumber} not found - {yk_output}")
         yk_data = np.loadtxt(yk_output, comments="#")[:, 3] # Only takes the 3rd knot
@@ -357,12 +357,12 @@ class OPENBF_InverseProblem:
         # Residual matrix
         R_matrix = patient_data - yk_data
 
-        # Loads the iteration k paramaters and initial parameters (Pdk and Pd0)
-        k0_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
+        # Loads the iteration k paramaters and initial parameters (Pk and P0)
+        k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
         if knumber == 0:
-            k_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
+            k_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
         else:
-            k_param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber}", f"Pdk_{vessel}.last")
+            k_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{knumber}", f"Pk_{vessel}.last")
 
 
         if os.path.exists(k0_param_file):
@@ -402,10 +402,10 @@ class OPENBF_InverseProblem:
         np.savetxt(B_file, np.atleast_1d(B), fmt="%.14e")
         print(f"B matrix saved: {B_file}")
 
-    def Pdk(self, vessel, delta_dict, param_directory, yaml_file):
+    def Pk(self, vessel, delta_dict, param_directory, yaml_file):
         """Loads the parameters of a yaml file and saves it in a directory."""
 
-        Pdk = {vessel: []}
+        Pk = {vessel: []}
 
         # Creates a vector with the parameter values corresponding to the guess
         parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
@@ -429,7 +429,7 @@ class OPENBF_InverseProblem:
                 for parameter in valid_parameters:
                     if parameter in item:
                         value = item[parameter]
-                        Pdk[vessel].append(value)
+                        Pk[vessel].append(value)
                         found = True
                     else:
                         print(f"Error: Parameter '{parameter}' not found in vessel '{vessel}'.")
@@ -443,34 +443,34 @@ class OPENBF_InverseProblem:
         os.makedirs(file_dir, exist_ok=True)
 
         # Saves the parameters vector in a file
-        Pdk_file = os.path.join(file_dir, f"Pdk_{vessel}.last")
-        param_array = np.array(Pdk[vessel]).reshape(-1, 1)
-        np.savetxt(Pdk_file, param_array, fmt="%.14e")
-        print(f"Parameter vector saved: {Pdk_file}")
+        Pk_file = os.path.join(file_dir, f"Pk_{vessel}.last")
+        param_array = np.array(Pk[vessel]).reshape(-1, 1)
+        np.savetxt(Pk_file, param_array, fmt="%.14e")
+        print(f"Parameter vector saved: {Pk_file}")
 
 
     def optimized_parameters(self, ID, vessel, alpha, beta_opt, knumber):
-        """ Obtains the optimized parameters Pdk+1 and saves them in a file.
+        """ Obtains the optimized parameters Pk+1 and saves them in a file.
         
         Parameters:
             alpha (int): Alpha is the sub-relaxation factor for the Newton step."""
 
         # Where the matrix of optimized parameters will be
         new_knumber = knumber + 1
-        opt_param_dir = os.path.join(openBF_dir, f"optimized_parameters_Pd{new_knumber}")
+        opt_param_dir = os.path.join(openBF_dir, f"optimized_parameters_P{new_knumber}")
         os.makedirs(opt_param_dir, exist_ok=True)
 
-        # Loads the parameters of the initial guess (Pdk)
+        # Loads the parameters of the initial guess (Pk)
         if knumber == 0:
-            param_path = os.path.join(openBF_dir, f"Pd{knumber}", f"Pdk_{vessel}.last")
+            param_path = os.path.join(openBF_dir, f"P{knumber}", f"Pk_{vessel}.last")
         else:
-            param_path = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber}",
-                                        f"Pdk_{vessel}.last")
+            param_path = os.path.join(openBF_dir, f"optimized_parameters_P{knumber}",
+                                        f"Pk_{vessel}.last")
 
         if os.path.exists(param_path):
             param_data = np.loadtxt(param_path).ravel() # Ensures vector (n_params,)
         else:
-            raise SystemExit(f"Error: Pdk matrix file not found - {param_path}. Execution stopped.")
+            raise SystemExit(f"Error: Pk matrix file not found - {param_path}. Execution stopped.")
 
         # Loads the data from the A matrix
         A_matrix_path = os.path.join(openBF_dir, f"A_matrix_ID={ID}", f"A_matrix_{vessel}.txt")
@@ -496,7 +496,7 @@ class OPENBF_InverseProblem:
             raise SystemExit(f"Error: B matrix file not found - {B_matrix_path}. Execution stopped.")
 
 
-        # Creates the optimized parameters (Pd(k+1)) matrix
+        # Creates the optimized parameters (P(k+1)) matrix
         deltaP_matrix = np.linalg.solve(A_data,B_data)
         print("Shape of deltaP is:", deltaP_matrix.shape)
         deltaP_matrix = deltaP_matrix.ravel()   # Ensures vector (n_params,)
@@ -504,7 +504,7 @@ class OPENBF_InverseProblem:
 
         print("Shape param_data:", param_data.shape)
         opt_param_data = param_data + alpha * deltaP_matrix
-        print(f"Optimized parameters (Pdk+1): {opt_param_data}, shape: {opt_param_data.shape}")
+        print(f"Optimized parameters (Pk+1): {opt_param_data}, shape: {opt_param_data.shape}")
 
         # Checks rank for A_data
         threshold = 1e-12 # threshold to consider a number equivalent to zero
@@ -550,7 +550,7 @@ class OPENBF_InverseProblem:
 
 
         # Saves the optimized parameters matrix in a file
-        opt_param_file = os.path.join(opt_param_dir, f"Pdk_{vessel}.last")
+        opt_param_file = os.path.join(opt_param_dir, f"Pk_{vessel}.last")
         np.savetxt(opt_param_file, opt_param_data, fmt="%.14e")
         print(f"Optimized parameters matrix saved: {opt_param_file}")
 
@@ -579,7 +579,7 @@ class OPENBF_InverseProblem:
             return
 
         # Loads the file with the optimized parameters
-        param_file = os.path.join(param_files_dir, f"Pdk_{vessel}.last")
+        param_file = os.path.join(param_files_dir, f"Pk_{vessel}.last")
 
         if os.path.exists(param_file):
             new_params = np.loadtxt(param_file)
@@ -623,15 +623,15 @@ class OPENBF_InverseProblem:
             kplus = knumber + 1
 
             # Files paths
-            patient_file = os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last")
-            yk_file = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
+            patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"{vessel}_stacked.last")
+            yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output_iteration", f"{vessel}_stacked.last")
             Jk_file = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt")
-            kplus_param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{kplus}", f"Pdk_{vessel}.last")
-            k0_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
+            kplus_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{kplus}", f"Pk_{vessel}.last")
+            k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
             if knumber == 0:
-                k_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
+                k_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
             else:
-                k_param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber}", f"Pdk_{vessel}.last")
+                k_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{knumber}", f"Pk_{vessel}.last")
             kstar_param_file = self.kstar_file
 
             # Checks if files exist
@@ -762,16 +762,16 @@ class OPENBF_InverseProblem:
 
         plt.close('all')
 
-        file_template = 'Pdk_{}.last'
+        file_template = 'Pk_{}.last'
         plots_dir = os.path.join(openBF_dir, f"iteration_plots_ID={ID}")
         os.makedirs(plots_dir, exist_ok=True)
 
         patient_parameters = "Pm"
         patient_yaml = self.patient_file
-        self.Pdk(vessel, delta_dict, patient_parameters, patient_yaml)
+        self.Pk(vessel, delta_dict, patient_parameters, patient_yaml)
 
         file_name = file_template.format(vessel)
-        folders = ['Pd0'] + [f'optimized_parameters_Pd{i}' for i in range(1, knumber_max + 1)]
+        folders = ['P0'] + [f'optimized_parameters_P{i}' for i in range(1, knumber_max + 1)]
 
         all_parameters = ["h0", "L", "R0", "E", "Rp", "Rd"]
         param_labels = {
@@ -910,7 +910,7 @@ class OPENBF_InverseProblem:
         self.update_yaml(knumber, vessel, parameter, add_value)
 
         # Where the k_file output files are
-        base_dir = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}")
+        base_dir = os.path.join(openBF_dir, f"y{knumber}_openBF_output_iteration")
         os.makedirs(base_dir, exist_ok=True)
         # Where the updated_file output files will be
         updated_dir = os.path.join(openBF_dir, f"openBF_updated_{vessel}_{parameter}")
@@ -957,7 +957,7 @@ class OPENBF_InverseProblem:
                 raise SystemExit(f"Error: File {k_yaml_file} not found. Execution stopped.")
 
             # Runs openBF to 0-iteration YAML file
-            self.file_openBF(k_yaml_file, f"y{knumber} - openBF output iteration {knumber}")
+            self.file_openBF(k_yaml_file, f"y{knumber}_openBF_output_iteration")
 
         for parameter in valid_parameters:
             self.updated_openBF(knumber, vessel, parameter, add_values[parameter])
@@ -966,12 +966,12 @@ class OPENBF_InverseProblem:
         output_path = os.path.join(openBF_dir, f"jacobians")
         self.stack_partial_derivatives(knumber, vessel, add_values, output_path)
 
-        # Creates the Pd0 matrix (parameters of the k-iteration yaml)
+        # Creates the P0 matrix (parameters of the k-iteration yaml)
         if knumber == 0:
             yaml_file = self.k0_file
-            param_directory = "Pd0"
+            param_directory = "P0"
 
-            self.Pdk(vessel, add_values, param_directory, yaml_file)
+            self.Pk(vessel, add_values, param_directory, yaml_file)
 
         # Calculates the optimized parameters with a initial guess for beta
         # beta_guess = 1e-4  
@@ -995,9 +995,9 @@ class OPENBF_InverseProblem:
         if knumber == 0:
             base_yaml_path = os.path.join(openBF_dir, self.k0_file)
         else:
-            base_yaml_path = os.path.join(openBF_dir, f"problema_inverso - k={knumber}.yaml")
-        opt_param_files_dir = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber+1}")
-        opt_output_yaml_path = os.path.join(openBF_dir, f"problema_inverso - k={knumber+1}.yaml")
+            base_yaml_path = os.path.join(openBF_dir, f"inverse_problem_k={knumber}.yaml")
+        opt_param_files_dir = os.path.join(openBF_dir, f"optimized_parameters_P{knumber+1}")
+        opt_output_yaml_path = os.path.join(openBF_dir, f"inverse_problem_k={knumber+1}.yaml")
 
         # Checks if file exists
         if not os.path.exists(base_yaml_path):
@@ -1006,7 +1006,7 @@ class OPENBF_InverseProblem:
         self.update_yaml_with_optimized_parameters(vessel, add_values, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
 
         # Runs openBF to the new/optimized yaml file
-        self.file_openBF(opt_output_yaml_path, f"y{knumber+1} - openBF output iteration {knumber+1}")
+        self.file_openBF(opt_output_yaml_path, f"y{knumber+1}_openBF_output_iteration")
 
 
     def search_opt(self, ID, vessel, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max):
@@ -1036,10 +1036,10 @@ class OPENBF_InverseProblem:
 
         # Carrega Jk, y_m, y_k
         Jk = np.loadtxt(os.path.join(openBF_dir, "jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt"))
-        ym = np.loadtxt(os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last"))[:,3:4]
-        yk = np.loadtxt(os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last"))[:,3:4]
-        Pdk = np.loadtxt(os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber}", f"Pdk_{vessel}.last"))
-        Pd0 = np.loadtxt(os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last"))
+        ym = np.loadtxt(os.path.join(openBF_dir, "ym_openBF_patient_output", f"{vessel}_stacked.last"))[:,3:4]
+        yk = np.loadtxt(os.path.join(openBF_dir, f"y{knumber}_openBF_output_iteration", f"{vessel}_stacked.last"))[:,3:4]
+        Pk = np.loadtxt(os.path.join(openBF_dir, f"optimized_parameters_P{knumber}", f"Pk_{vessel}.last"))
+        P0 = np.loadtxt(os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last"))
 
         # D diagonal na ordem dos parâmetros válidos
         I = np.eye(len(valid_parameters))
@@ -1047,7 +1047,7 @@ class OPENBF_InverseProblem:
         # Matrizes 
         JT_J = Jk.T @ Jk
         A = JT_J + beta**2 * I
-        B = Jk.T @ (ym - yk) - beta**2 * (Pdk - Pd0)
+        B = Jk.T @ (ym - yk) - beta**2 * (Pk - P0)
 
         # Normas e espectros
         n_J = np.linalg.norm(JT_J, 2)
@@ -1086,15 +1086,15 @@ class OPENBF_InverseProblem:
         kplus = knumber + 1
 
         # Files paths
-        patient_file = os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last")
-        yk_file = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
+        patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"{vessel}_stacked.last")
+        yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output_iteration", f"{vessel}_stacked.last")
         Jk_file = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt")
-        k0_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
-        kplus_param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{kplus}", f"Pdk_{vessel}.last")
+        k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
+        kplus_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{kplus}", f"Pk_{vessel}.last")
         if knumber == 0:
-            k_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
+            k_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
         else:
-            k_param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber}", f"Pdk_{vessel}.last")
+            k_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{knumber}", f"Pk_{vessel}.last")
         kstar_param_file = self.kstar_file
 
         # Checks if files exist
@@ -1170,7 +1170,7 @@ class OPENBF_InverseProblem:
             residual_append.append(residual_norm)
 
             # Calculates the solution norm
-            solution = kplus_data - kstar_data # Pdk+1 - Pd*
+            solution = kplus_data - kstar_data # Pk+1 - Pd*
             solution_norm = (solution.T @ W2 @ solution)
 
             # Stores it to plot
@@ -1249,14 +1249,14 @@ class OPENBF_InverseProblem:
         discrepancy = []
 
         # Files paths
-        patient_file = os.path.join(openBF_dir, "ym - openBF output paciente", f"{vessel}_stacked.last")
-        yk_file = os.path.join(openBF_dir, f"y{knumber} - openBF output iteration {knumber}", f"{vessel}_stacked.last")
+        patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"{vessel}_stacked.last")
+        yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output_iteration", f"{vessel}_stacked.last")
         Jk_file = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt")
-        k0_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
+        k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
         if knumber == 0:
-            k_param_file = os.path.join(openBF_dir, "Pd0", f"Pdk_{vessel}.last")
+            k_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
         else:
-            k_param_file = os.path.join(openBF_dir, f"optimized_parameters_Pd{knumber}", f"Pdk_{vessel}.last")
+            k_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{knumber}", f"Pk_{vessel}.last")
         kstar_param_file = self.kstar_file
 
         # Checks if files exist
@@ -1397,19 +1397,19 @@ class OPENBF_InverseProblem:
 # Application
 if __name__ == "__main__":
 
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel1"
-    inlet_dat = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel1/circle_of_willis_inlet.dat"
-    patient_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel1/problema_inverso - Paciente.yaml"
-    k0_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel1/problema_inverso - k=0 - fixed_vessels_2and3.yaml"
-    kstar_txt = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel1/Pd_star_vessel1.txt"
+    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1"
+    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/circle_of_willis_inlet.dat"
+    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/inverse_problem_Patient.yaml"
+    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/inverse_problem_k=0_fixed_vessels_2and3.yaml"
+    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/P_star_vessel1.txt"
 
     updater = OPENBF_InverseProblem(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
     # # Runs openBF to patient file
-    updater.file_openBF(patient_yaml, "ym - openBF output paciente")
+    updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
 
     # # Searches optimized parameters
-    updater.search_opt(19, "vessel1", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 40)
+    updater.search_opt(20, "vessel1", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 40)
 
     # for knumber in range(0,21):
     #     updater.Morozov("vessel1",knumber,plot=True)
