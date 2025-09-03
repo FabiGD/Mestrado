@@ -13,9 +13,10 @@ from scipy.signal import savgol_filter
 from julia import Main
 from matplotlib.ticker import ScalarFormatter
 
-class OPENBF_Jacobian:
+class OPENBF_InverseProblem:
     """
             Creates the Jacobian matrix for a parameter variation of a vessel.
+
 
             Attributes:
             ----------
@@ -661,7 +662,6 @@ class OPENBF_Jacobian:
             # Corrects Jk dimension 
             if Jk_data.ndim == 1:
                 Jk_data = Jk_data.reshape(-1, 1) # (200,) -> (200,1)
-            print("Shape of Jk is:", Jk_data.shape)
 
             # Creates deltaP matrix
             deltaP_matrix = kplus_data - k_data
@@ -682,7 +682,7 @@ class OPENBF_Jacobian:
             residual_error_append.append(res_error)
 
             # Finds optimal beta
-            beta_opt = self.Lcurve_dict.get(knumber, list(self.Lcurve_dict.values())[-1])
+            beta_opt = self.Morozov_dict.get(knumber, list(self.Morozov_dict.values())[-1])
             
             # Calculates the solution norm
             sol = np.atleast_1d((kplus_data - kstar_data)) 
@@ -974,13 +974,13 @@ class OPENBF_Jacobian:
             self.Pdk(vessel, add_values, param_directory, yaml_file)
 
         # Calculates the optimized parameters with a initial guess for beta
-        beta_guess = 1e-4  
-        self.A_matrix(ID, beta_guess, vessel, knumber)
-        self.B_matrix(ID, beta_guess, vessel, knumber, valid_parameters)
-        self.optimized_parameters(ID, vessel, alpha, beta_guess, knumber)
+        # beta_guess = 1e-4  
+        # self.A_matrix(ID, beta_guess, vessel, knumber)
+        # self.B_matrix(ID, beta_guess, vessel, knumber, valid_parameters)
+        # self.optimized_parameters(ID, vessel, alpha, beta_guess, knumber)
 
         # Finds optimal beta
-        beta_opt = self.L_curve(vessel, knumber, plot=True)
+        beta_opt = self.Morozov(vessel, knumber, plot=True)
 
         # Creates the pseudoinverse matrix
         self.A_matrix(ID, beta_opt, vessel, knumber)
@@ -1072,6 +1072,7 @@ class OPENBF_Jacobian:
         print(f"cond(A)            = {cond_A: .3e}")
         print(f"ΔP change (with D vs no D): {rel_step_change: .3e}")
 
+    
     def L_curve(self, vessel, knumber, plot=True):
         # To generate the L-curve and find beta_opt, you don't need a specific β beforehand: 
         # you only need the iterations of the model without regularization or with a fixed 
@@ -1126,8 +1127,8 @@ class OPENBF_Jacobian:
         if Jk_data.ndim == 1:
             Jk_data = Jk_data.reshape(-1, 1) # (200,) -> (200,1)
 
-        # Creates 1000 points of beta
-        beta_values = np.logspace(-8, 2, 1000)   # 1000 points between 1e-8 e 1e2
+        # Creates 100 points of beta
+        beta_values = np.logspace(-8, 2, 100)   # 100 points between 1e-8 e 1e2
 
         for beta in beta_values:
 
@@ -1161,14 +1162,14 @@ class OPENBF_Jacobian:
                 raise SystemExit(f"Error: A is not singular (non inversible). Execution stopped.")
             
 
-            # Calculates the squared error of the output of iteration k with respect to the patient output
+            # Calculates the residual norm
             residual = patient_data - yk_data - Jk_data @ dp
             residual_norm = (residual.T @ W1 @ residual)
 
             # Stores it to plot
             residual_append.append(residual_norm)
 
-            # Calculates the squared error of the parameters
+            # Calculates the solution norm
             solution = kplus_data - kstar_data # Pdk+1 - Pd*
             solution_norm = (solution.T @ W2 @ solution)
 
@@ -1204,6 +1205,7 @@ class OPENBF_Jacobian:
         print(f"Optimal β found: {beta_opt:.3e}")
     
         if plot:
+
             # Plot directory
             plot_dir = os.path.join(openBF_dir, "iteration_plots_Lcurve")
             os.makedirs(plot_dir, exist_ok=True)
@@ -1238,6 +1240,7 @@ class OPENBF_Jacobian:
         # Returns the beta corresponding to iteration k
         return beta_opt
     
+
     def Morozov(self, vessel, knumber, plot=True):
     
         if plot:
@@ -1284,27 +1287,37 @@ class OPENBF_Jacobian:
         if Jk_data.ndim == 1:
             Jk_data = Jk_data.reshape(-1, 1) # (200,) -> (200,1)
 
-        # Creates 1000 points of beta
-        beta_values = np.logspace(-8, 2, 1000)   # 1000 points between 1e-8 e 1e2
+        # Creates 100 points of beta
+        beta_values = np.logspace(-8, 2, 100)   # 100 points between 1e-8 e 1e2
+
+        # Creates the sigma matrix
+        N = len(yk_data)
+        sigma = np.zeros(N) # vetor de desvios padrão
+
+        # First 100 rows with pressure standard deviation
+        pressure_std = 266.64 # Pa
+        sigma[:100] = pressure_std
+
+        # Last 100 rows with velocity standard deviation
+        velocity_mean = np.mean(yk_data[-100:]) 
+        velocity_std = 0.03 * velocity_mean # m/s
+        sigma[-100:] = velocity_std
+
+        # Adds noise to the first 100 lines of yk_data (standard deviation = 266.64 Pa)
+        yk_withnoise = yk_data.copy() # Copies yk_data
+        yk_withnoise[:100] = yk_data[:100] + np.random.normal(0, pressure_std, size=100)
+
+        # Adds noise to the last 100 lines of yk_data (standard deviation = 3% of the mean)
+        yk_withnoise[-100:] = yk_data[-100:] + np.random.normal(0, velocity_std, size=100)
 
         # Defines delta
-        # delta = 1e-3 * np.linalg.norm(yk_data)   # 0.1% of the yk data
-        delta = 1e-2
-
-        # Adds noise to yk_data
-        yk_withnoise = yk_data.copy()  # copies yk_data
-
-        # Noise in the first 100 lines (standard deviation = 266.64 Pa)
-        yk_withnoise[:100] += np.random.normal(0, 266.64, size=100)
-
-        # Noise in the last 100 lines (standard deviation = 3% of the mean)
-        velocity_mean = np.mean(yk_data[-100:])
-        velocity_std = 0.03 * velocity_mean
-        yk_data[-100:] += np.random.normal(0, velocity_std, size=100)
+        #global_delta2 = np.sum(sigma**2) # sigma norm
+        #global_delta = np.sqrt(global_delta2) 
+        global_delta = np.sqrt(N) 
 
         for beta in beta_values:
 
-            # Regularizing matrices
+            # Tikhonov Regularization matrices
             epsilon = 1e-8
             z = patient_data
             W1 = np.diag(1 / np.maximum(np.abs(z), epsilon)) # Weighting matrix
@@ -1316,7 +1329,7 @@ class OPENBF_Jacobian:
             A = Jk_data.T @ W1 @ Jk_data + beta**2 * W2
 
             # Creates the B matrix
-            R_matrix = patient_data - yk_data
+            R_matrix = patient_data - yk_withnoise
             B = Jk_data.T @ W1 @ R_matrix - beta**2 * W2 @ (k_data - kstar_data)
 
             # Adjusting the dimensions to use np.lingalg.solve
@@ -1330,29 +1343,44 @@ class OPENBF_Jacobian:
                 dp = np.linalg.solve(A, B)
                 dp = dp.ravel()   # Ensures vector (n_params,)
             except np.linalg.LinAlgError:
-                raise SystemExit(f"Error: A is not singular (non inversible). Execution stopped.")
+                raise SystemExit(f"Error: A is not singular (non-invertible). Execution stopped.")
             
-            # Calculates the squared error of the output of iteration k with respect to the patient output
-            residual = patient_data - yk_data - Jk_data @ dp
-            residual_norm = float(residual.T @ W1 @ residual)
+            # Calculates the residual norm
+            residual = patient_data - yk_withnoise - Jk_data @ dp
+            weighted_residual = residual / sigma
+            residual_norm = np.sum(weighted_residual ** 2) 
 
-            # Diferença em relação ao nível de ruído esperado
-            discrepancy.append(abs(residual_norm - delta**2))
+            # Difference from expected noise level
+            discrepancy.append(abs(residual_norm - global_delta**2))
 
-        # Encontrar índice do beta ótimo
+        # Finds the optimal beta index
         idx_opt = int(np.argmin(np.abs(discrepancy)))
         beta_opt = beta_values[idx_opt]
 
         if plot:
-            plt.figure()
-            plt.loglog(beta_values, discrepancy, 'bo-')
-            plt.title(f'alpha Morozov: %1.2g' % beta_values[idx_opt])
-            plt.loglog(beta_values, delta * np.ones_like(beta_values), '--k')
-            plt.loglog(beta_values[idx_opt], discrepancy[idx_opt], 'r.', markersize=20)
-            plt.xlabel(r'$\beta$')
-            plt.ylabel(r'$|| T_\beta f_{\beta,\delta} - m_\delta ||$')
+
+            # Plot directory
+            plot_dir = os.path.join(openBF_dir, "iteration_plots_discrepancy")
+            os.makedirs(plot_dir, exist_ok=True)
+
+            fig = plt.figure(figsize=(11, 6))
+            plt.loglog(beta_values, discrepancy)
+            plt.axvline(beta_opt, color='red', linestyle='--')
+            plt.xlabel('β')
+            plt.ylabel('Discrepancy:' + r'$ [\|z-h(\theta_0)-J_k(\theta-\theta_0)\|_2^2 - \delta_G^2]$')
+            plt.title("Morozov's Discrepancy Principle")
             plt.grid(True)
-            plt.show()
+
+            plot_path = os.path.join(plot_dir, f"discrepancy_{vessel}_k{knumber}")
+            plt.savefig(f"{plot_path}.png", dpi=300)
+            plt.savefig(f"{plot_path}.svg")
+            with open(f"{plot_path}.pkl", "wb") as f:
+                pickle.dump(fig, f)
+            plt.close(fig)
+
+            # Confirmaton on the terminal
+            print(f"Discrepancy Principle plot saved: {plot_path}.png, .svg, .pkl")
+
 
         # Creates a dictionary with the beta's
         if not hasattr(self, "Morozov_dict"):
@@ -1369,16 +1397,20 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel3"
-    inlet_dat = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel3/circle_of_willis_inlet.dat"
-    patient_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel3/problema_inverso - Paciente.yaml"
-    k0_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel3/problema_inverso - k=0 - fixed_vessels_1and2.yaml"
-    kstar_txt = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel3/Pd_star_vessel3.txt"
+    openBF_dir = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel1"
+    inlet_dat = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel1/circle_of_willis_inlet.dat"
+    patient_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel1/problema_inverso - Paciente.yaml"
+    k0_yaml = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel1/problema_inverso - k=0 - fixed_vessels_2and3.yaml"
+    kstar_txt = "C:/Users/Reinaldo/Documents/problema_inverso_results_openbf_vessel1/Pd_star_vessel1.txt"
 
-    updater = OPENBF_Jacobian(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
+    updater = OPENBF_InverseProblem(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
-    # Runs openBF to patient file
-    #updater.file_openBF(patient_yaml, "ym - openBF output paciente")
+    # # Runs openBF to patient file
+    updater.file_openBF(patient_yaml, "ym - openBF output paciente")
 
-    # Searches optimized parameters
-    updater.search_opt(17, "vessel3", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+    # # Searches optimized parameters
+    updater.search_opt(19, "vessel1", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 40)
+
+    # for knumber in range(0,21):
+    #     updater.Morozov("vessel1",knumber,plot=True)
+    #     updater.L_curve("vessel1", knumber, plot=True)
