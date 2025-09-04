@@ -1367,9 +1367,10 @@ class OPENBF_InverseProblem:
             plt.loglog(beta_values, discrepancy)
             plt.axvline(beta_opt, color='red', linestyle='--')
             plt.xlabel('β')
-            plt.ylabel('Discrepancy:' + r'$ [\|z-h(\theta_0)-J_k(\theta-\theta_0)/\sigma\|_2^2 - \delta_G^2]$')
+            plt.ylabel('Discrepancy: ' + r'$ [\|\frac{z-h(\theta_0)-J_k(\theta-\theta_0)}{\sigma}\|_2^2 - \delta^2]$', fontsize = 14)
             plt.title("Morozov's Discrepancy Principle")
             plt.grid(True)
+            plt.tight_layout()
 
             plot_path = os.path.join(plot_dir, f"discrepancy_{vessel}_k{knumber}")
             plt.savefig(f"{plot_path}.png", dpi=300)
@@ -1387,7 +1388,6 @@ class OPENBF_InverseProblem:
             self.Morozov_dict = {}
         
         self.Morozov_dict[knumber] = beta_opt
-        print(self.Morozov_dict)
 
         # Returns the beta corresponding to iteration k
         print(f"The optimal beta for k={knumber} is:", beta_opt)
@@ -1406,11 +1406,11 @@ if __name__ == "__main__":
     updater = OPENBF_InverseProblem(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
     # Runs openBF to patient file
-    updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
+    # updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
 
     # Searches optimized parameters
-    exponents = np.arange(-8, 3, 0.5)  # 3 is exclusive, so it goes up to 2
+    exponents = np.arange(-7.5, 3, 0.5)  # 3 is exclusive, so it goes up to 2
     beta_values = 10.0 ** exponents
     for fixed_beta in beta_values:
-        updater.search_opt(20, fixed_beta, "vessel1", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 40)
+        updater.search_opt(20, fixed_beta, "vessel1", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
 
