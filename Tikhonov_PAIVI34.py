@@ -13,10 +13,9 @@ from scipy.signal import savgol_filter
 from julia import Main
 from matplotlib.ticker import ScalarFormatter
 
-class OPENBF_InverseProblem:
+class OPENBF_Jacobian:
     """
             Creates the Jacobian matrix for a parameter variation of a vessel.
-
 
             Attributes:
             ----------
@@ -333,7 +332,7 @@ class OPENBF_InverseProblem:
         else:
             raise SystemExit(f"Error: File not found - {file_path}. Execution stopped.")
 
-    def B_matrix(self, ID, beta_opt, vessel, knumber, valid_parameters):
+    def B_matrix(self, ID, beta_opt, vessel, knumber):
 
         # Path to the jacobian matrix file
         file_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt")
@@ -349,7 +348,7 @@ class OPENBF_InverseProblem:
         patient_data = np.loadtxt(patient_output, comments="#")[:, 3] # Only takes the 3rd knot
 
         # Loads the simulation output corresponding to the guess
-        yk_output = os.path.join(openBF_dir, f"y{knumber}_openBF_output_iteration", f"{vessel}_stacked.last")
+        yk_output = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"{vessel}_stacked.last")
         if not os.path.exists(yk_output):
             raise SystemExit(f"Error: Output file for iteration {knumber} not found - {yk_output}")
         yk_data = np.loadtxt(yk_output, comments="#")[:, 3] # Only takes the 3rd knot
@@ -496,7 +495,7 @@ class OPENBF_InverseProblem:
             raise SystemExit(f"Error: B matrix file not found - {B_matrix_path}. Execution stopped.")
 
 
-        # Creates the optimized parameters (P(k+1)) matrix
+        # Creates the optimized parameters (Pd(k+1)) matrix
         deltaP_matrix = np.linalg.solve(A_data,B_data)
         print("Shape of deltaP is:", deltaP_matrix.shape)
         deltaP_matrix = deltaP_matrix.ravel()   # Ensures vector (n_params,)
@@ -624,7 +623,7 @@ class OPENBF_InverseProblem:
 
             # Files paths
             patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"{vessel}_stacked.last")
-            yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output_iteration", f"{vessel}_stacked.last")
+            yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"{vessel}_stacked.last")
             Jk_file = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt")
             kplus_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{kplus}", f"Pk_{vessel}.last")
             k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
@@ -662,6 +661,7 @@ class OPENBF_InverseProblem:
             # Corrects Jk dimension 
             if Jk_data.ndim == 1:
                 Jk_data = Jk_data.reshape(-1, 1) # (200,) -> (200,1)
+            print("Shape of Jk is:", Jk_data.shape)
 
             # Creates deltaP matrix
             deltaP_matrix = kplus_data - k_data
@@ -682,7 +682,7 @@ class OPENBF_InverseProblem:
             residual_error_append.append(res_error)
 
             # Finds optimal beta
-            beta_opt = self.Morozov_dict.get(knumber, list(self.Morozov_dict.values())[-1])
+            beta_opt = self.Lcurve_dict.get(knumber, list(self.Lcurve_dict.values())[-1])
             
             # Calculates the solution norm
             sol = np.atleast_1d((kplus_data - kstar_data)) 
@@ -910,7 +910,7 @@ class OPENBF_InverseProblem:
         self.update_yaml(knumber, vessel, parameter, add_value)
 
         # Where the k_file output files are
-        base_dir = os.path.join(openBF_dir, f"y{knumber}_openBF_output_iteration")
+        base_dir = os.path.join(openBF_dir, f"y{knumber}_openBF_output")
         os.makedirs(base_dir, exist_ok=True)
         # Where the updated_file output files will be
         updated_dir = os.path.join(openBF_dir, f"openBF_updated_{vessel}_{parameter}")
@@ -957,7 +957,7 @@ class OPENBF_InverseProblem:
                 raise SystemExit(f"Error: File {k_yaml_file} not found. Execution stopped.")
 
             # Runs openBF to 0-iteration YAML file
-            self.file_openBF(k_yaml_file, f"y{knumber}_openBF_output_iteration")
+            self.file_openBF(k_yaml_file, f"y{knumber}_openBF_output")
 
         for parameter in valid_parameters:
             self.updated_openBF(knumber, vessel, parameter, add_values[parameter])
@@ -974,19 +974,19 @@ class OPENBF_InverseProblem:
             self.Pk(vessel, add_values, param_directory, yaml_file)
 
         # Calculates the optimized parameters with a initial guess for beta
-        # beta_guess = 1e-4  
-        # self.A_matrix(ID, beta_guess, vessel, knumber)
-        # self.B_matrix(ID, beta_guess, vessel, knumber, valid_parameters)
-        # self.optimized_parameters(ID, vessel, alpha, beta_guess, knumber)
+        beta_guess = 1e-4  
+        self.A_matrix(ID, beta_guess, vessel, knumber)
+        self.B_matrix(ID, beta_guess, vessel, knumber)
+        self.optimized_parameters(ID, vessel, alpha, beta_guess, knumber)
 
         # Finds optimal beta
-        beta_opt = self.Morozov(vessel, knumber, plot=True)
+        beta_opt = self.L_curve(vessel, knumber, plot=True)
 
         # Creates the pseudoinverse matrix
         self.A_matrix(ID, beta_opt, vessel, knumber)
 
         # Creates the B matrix
-        self.B_matrix(ID, beta_opt, vessel, knumber, valid_parameters)
+        self.B_matrix(ID, beta_opt, vessel, knumber)
 
         # Creates the optimized parameters matrix
         self.optimized_parameters(ID, vessel, alpha, beta_opt, knumber)
@@ -1006,7 +1006,7 @@ class OPENBF_InverseProblem:
         self.update_yaml_with_optimized_parameters(vessel, add_values, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
 
         # Runs openBF to the new/optimized yaml file
-        self.file_openBF(opt_output_yaml_path, f"y{knumber+1}_openBF_output_iteration")
+        self.file_openBF(opt_output_yaml_path, f"y{knumber+1}_openBF_output")
 
 
     def search_opt(self, ID, vessel, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max):
@@ -1037,7 +1037,7 @@ class OPENBF_InverseProblem:
         # Carrega Jk, y_m, y_k
         Jk = np.loadtxt(os.path.join(openBF_dir, "jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt"))
         ym = np.loadtxt(os.path.join(openBF_dir, "ym_openBF_patient_output", f"{vessel}_stacked.last"))[:,3:4]
-        yk = np.loadtxt(os.path.join(openBF_dir, f"y{knumber}_openBF_output_iteration", f"{vessel}_stacked.last"))[:,3:4]
+        yk = np.loadtxt(os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"{vessel}_stacked.last"))[:,3:4]
         Pk = np.loadtxt(os.path.join(openBF_dir, f"optimized_parameters_P{knumber}", f"Pk_{vessel}.last"))
         P0 = np.loadtxt(os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last"))
 
@@ -1072,7 +1072,6 @@ class OPENBF_InverseProblem:
         print(f"cond(A)            = {cond_A: .3e}")
         print(f"ΔP change (with D vs no D): {rel_step_change: .3e}")
 
-    
     def L_curve(self, vessel, knumber, plot=True):
         # To generate the L-curve and find beta_opt, you don't need a specific β beforehand: 
         # you only need the iterations of the model without regularization or with a fixed 
@@ -1087,7 +1086,7 @@ class OPENBF_InverseProblem:
 
         # Files paths
         patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"{vessel}_stacked.last")
-        yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output_iteration", f"{vessel}_stacked.last")
+        yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"{vessel}_stacked.last")
         Jk_file = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt")
         k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
         kplus_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{kplus}", f"Pk_{vessel}.last")
@@ -1127,8 +1126,8 @@ class OPENBF_InverseProblem:
         if Jk_data.ndim == 1:
             Jk_data = Jk_data.reshape(-1, 1) # (200,) -> (200,1)
 
-        # Creates 100 points of beta
-        beta_values = np.logspace(-8, 2, 100)   # 100 points between 1e-8 e 1e2
+        # Creates 1000 points of beta
+        beta_values = np.logspace(-8, 2, 1000)   # 1000 points between 1e-8 e 1e2
 
         for beta in beta_values:
 
@@ -1162,15 +1161,15 @@ class OPENBF_InverseProblem:
                 raise SystemExit(f"Error: A is not singular (non inversible). Execution stopped.")
             
 
-            # Calculates the residual norm
+            # Calculates the squared error of the output of iteration k with respect to the patient output
             residual = patient_data - yk_data - Jk_data @ dp
             residual_norm = (residual.T @ W1 @ residual)
 
             # Stores it to plot
             residual_append.append(residual_norm)
 
-            # Calculates the solution norm
-            solution = kplus_data - kstar_data # Pk+1 - Pd*
+            # Calculates the squared error of the parameters
+            solution = kplus_data - kstar_data # Pk+1 - P*
             solution_norm = (solution.T @ W2 @ solution)
 
             # Stores it to plot
@@ -1205,7 +1204,6 @@ class OPENBF_InverseProblem:
         print(f"Optimal β found: {beta_opt:.3e}")
     
         if plot:
-
             # Plot directory
             plot_dir = os.path.join(openBF_dir, "iteration_plots_Lcurve")
             os.makedirs(plot_dir, exist_ok=True)
@@ -1287,8 +1285,8 @@ class OPENBF_InverseProblem:
         if Jk_data.ndim == 1:
             Jk_data = Jk_data.reshape(-1, 1) # (200,) -> (200,1)
 
-        # Creates 100 points of beta
-        beta_values = np.logspace(-8, 2, 100)   # 100 points between 1e-8 e 1e2
+        # Creates 1000 points of beta
+        beta_values = np.logspace(-8, 2, 1000)   # 1000 points between 1e-8 e 1e2
 
         # Creates the sigma matrix
         N = len(yk_data)
@@ -1403,14 +1401,10 @@ if __name__ == "__main__":
     k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/inverse_problem_k=0_fixed_vessels_2and3.yaml"
     kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/P_star_vessel1.txt"
 
-    updater = OPENBF_InverseProblem(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
+    updater = OPENBF_Jacobian(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
-    # # Runs openBF to patient file
-    # updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
+    # Runs openBF to patient file
+    #updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
 
-    # # Searches optimized parameters
-    # updater.search_opt(20, "vessel1", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 40)
-
-    for knumber in range(0,41):
-        updater.Morozov("vessel1",knumber,plot=True)
-    #     updater.L_curve("vessel1", knumber, plot=True)
+    # Searches optimized parameters
+    updater.search_opt(17.4, "vessel1", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
