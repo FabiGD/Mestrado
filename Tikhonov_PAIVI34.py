@@ -661,7 +661,6 @@ class OPENBF_Jacobian:
             # Corrects Jk dimension 
             if Jk_data.ndim == 1:
                 Jk_data = Jk_data.reshape(-1, 1) # (200,) -> (200,1)
-            print("Shape of Jk is:", Jk_data.shape)
 
             # Creates deltaP matrix
             deltaP_matrix = kplus_data - k_data
@@ -1072,6 +1071,7 @@ class OPENBF_Jacobian:
         print(f"cond(A)            = {cond_A: .3e}")
         print(f"ΔP change (with D vs no D): {rel_step_change: .3e}")
 
+
     def L_curve(self, vessel, knumber, plot=True):
         # To generate the L-curve and find beta_opt, you don't need a specific β beforehand: 
         # you only need the iterations of the model without regularization or with a fixed 
@@ -1217,7 +1217,7 @@ class OPENBF_Jacobian:
             plt.title(f'L-curve - {vessel}')
             plt.legend()
             plt.grid(True, which="both")
-            plt.tight_layout()
+
 
             plot_path = os.path.join(plot_dir, f"Lcurve_{vessel}_k{knumber}")
             plt.savefig(f"{plot_path}.png", dpi=300)
@@ -1237,7 +1237,7 @@ class OPENBF_Jacobian:
 
         # Returns the beta corresponding to iteration k
         return beta_opt
-    
+   
 
     def Morozov(self, vessel, knumber, plot=True):
     
@@ -1403,8 +1403,8 @@ if __name__ == "__main__":
 
     updater = OPENBF_Jacobian(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
-    # Runs openBF to patient file
-    #updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
+    # # Runs openBF to patient file
+    # updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
 
     # Searches optimized parameters
-    updater.search_opt(17.4, "vessel1", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+    updater.search_opt(17.5, "vessel1", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
