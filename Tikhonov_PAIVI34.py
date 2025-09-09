@@ -315,7 +315,6 @@ class OPENBF_Jacobian:
 
         file_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt")
 
-
         if os.path.exists(file_path):
             Jk = np.loadtxt(file_path) # Loads the Jacobian matrix
             if Jk.ndim == 1:
@@ -542,8 +541,8 @@ class OPENBF_Jacobian:
 
         # Checks condition number for A_data @ deltaP_matrix
         threshold_cond = 1e6 # threshold to consider ill-conditioned
+        cond_A = np.linalg.norm(A_data) * np.linalg.norm(np.linalg.inv(A_data))
         cond_AdP = np.linalg.norm(A_data) * (np.linalg.norm(deltaP_matrix)/np.linalg.norm(A_data @ deltaP_matrix))
-        print("Condition number of A matrix @ delta P is:", cond_AdP)
 
         # Prints and saves in a file the rank, condition number and the status of the matrices
         print_path = os.path.join(openBF_dir, f"A_matrix_ID={ID}", f"condition_{vessel}_k{knumber}.txt")
@@ -556,8 +555,14 @@ class OPENBF_Jacobian:
                 if rank_A < min(A_data.shape)
                 else f"The A-matrix is full-rank (invertible)."
             )
-            msg_cond = f"(A-matrix @ delta P matrix) condition number: {cond_AdP:.2e}"
-            cond_status = (
+            msg_cond1 = f"A-matrix condition number: {cond_A:.2e}"
+            cond_status1 = (
+                f"A-matrix is well-conditioned."
+                if cond_A < threshold_cond
+                else f"Warning: A-matrix is ill-conditioned (Condition number >= {threshold_cond:.0e})."
+            )
+            msg_cond2 = f"(A-matrix @ delta P matrix) condition number: {cond_AdP:.2e}"
+            cond_status2 = (
                 f"(A-matrix @ delta P matrix) is well-conditioned."
                 if cond_AdP < threshold_cond
                 else f"Warning: The multiplication (A-matrix @ delta P matrix) is ill-conditioned (Condition number >= {threshold_cond:.0e})."
@@ -565,13 +570,17 @@ class OPENBF_Jacobian:
             
             print(msg_rank)
             print(rank_status)
-            print(msg_cond)
-            print(cond_status)
+            print(msg_cond1)
+            print(cond_status1)
+            print(msg_cond2)
+            print(cond_status2)
 
             log.write(msg_rank + "\n")
             log.write(rank_status + "\n")
-            log.write(msg_cond + "\n")
-            log.write(cond_status + "\n")
+            log.write(msg_cond1 + "\n")
+            log.write(cond_status1 + "\n")
+            log.write(msg_cond2 + "\n")
+            log.write(cond_status2 + "\n")
             log.write("\n")
 
             print(f"beta = {beta_opt:.0e}")
@@ -1442,11 +1451,11 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2"
-    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2/circle_of_willis_inlet.dat"
-    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2/inverse_problem_Patient.yaml"
-    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2/inverse_problem_k=0_fixed_vessels_1and3.yaml"
-    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2/P_star_vessel2.txt"
+    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1"
+    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/circle_of_willis_inlet.dat"
+    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/inverse_problem_Patient.yaml"
+    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/inverse_problem_k=0_fixed_vessels_2and3.yaml"
+    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/P_star_vessel1.txt"
 
     updater = OPENBF_Jacobian(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
@@ -1454,7 +1463,7 @@ if __name__ == "__main__":
     updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
 
     # Searches optimized parameters
-    updater.search_opt(20, "vessel2", "Morozov", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+    updater.search_opt(20.1, "vessel1", "Morozov", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
 
     # for knumber in range(0,21):
     #     updater.Morozov("vessel1", knumber, plot=True)
