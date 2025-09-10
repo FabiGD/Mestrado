@@ -277,7 +277,7 @@ class OPENBF_Jacobian:
         delta_dict (dict): Dictionary with the deltas used in each parameter.
         output_path (str): Path where the stacked files will be saved.
         """
-        parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
+        parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
 
         # Filters parameters with delta != 0
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
@@ -436,7 +436,7 @@ class OPENBF_Jacobian:
         Pk = {vessel: []}
 
         # Creates a vector with the parameter values corresponding to the guess
-        parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
+        parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
 
         # Filters parameters with delta != 0
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
@@ -603,7 +603,7 @@ class OPENBF_Jacobian:
     def update_yaml_with_optimized_parameters(self, vessel, delta_dict, base_yaml_path, param_files_dir, output_yaml_path):
         # Updates the input YAML using the optimized parameters saved in separate files.
 
-        parameters = ["h0", "L", "R0", "Rp", "Rd", "E"]
+        parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
 
         # Filters parameters with delta != 0
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
@@ -817,14 +817,17 @@ class OPENBF_Jacobian:
         file_name = file_template.format(vessel)
         folders = ['P0'] + [f'optimized_parameters_P{i}' for i in range(1, knumber_max + 1)]
 
-        all_parameters = ["h0", "L", "R0", "E", "Rp", "Rd"]
+        all_parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
         param_labels = {
             "h0": "Wall thickness (h0) [m]",
             "L": "Length (L) [m]",
             "R0": "Lumen radius (R0) [m]",
-            "E": "Elastic modulus (E) [Pa]",
             "Rp": "Proximal radius (Rp) [m]",
-            "Rd": "Distal radius (Rd) [m]"
+            "Rd": "Distal radius (Rd) [m]",
+            "E": "Elastic modulus (E) [Pa]",
+            "R1": "First peripheral resistance (R1) [Pa⋅s⋅m^-3]",
+            "R2": "Second peripheral resistance (R2) [Pa⋅s⋅m^-3]",
+            "Cc": "Peripheral compliance (Cc) [m^3⋅Pa^-1]"            
             }
 
         valid_params = [p for p in all_parameters if delta_dict.get(p, 0) != 0]
@@ -981,10 +984,10 @@ class OPENBF_Jacobian:
         # Plots the simulation output graphs and saves them
         #self.plot_openBF(vessel, updated_dir)
 
-    def iteration(self, ID, knumber, vessel, beta_method, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E):
+    def iteration(self, ID, knumber, vessel, beta_method, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, add_R1, add_R2, add_Cc):
         # ATUALIZAR DESCRICAO """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
         #multiplies it to the R matrix and generates the optimized parameters."""
-        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E}
+        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E, "R1": add_R1, "R2": add_R2, "Cc": add_Cc}
 
         print(f"\n=== Starting iteration {knumber}, ID: {ID} ===\n")
 
@@ -1061,9 +1064,9 @@ class OPENBF_Jacobian:
         self.file_openBF(opt_output_yaml_path, f"y{knumber+1}_openBF_output")
 
 
-    def search_opt(self, ID, vessel, beta_method, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, knumber_max):
+    def search_opt(self, ID, vessel, beta_method, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, add_R1, add_R2, add_Cc, knumber_max):
 
-        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E}
+        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E, "R1": add_R1, "R2": add_R2, "Cc": add_Cc}
 
         # Starts chronometer
         start = time.time()
@@ -1073,7 +1076,7 @@ class OPENBF_Jacobian:
 
         # Runs iteration for k from 0 to knumber_max
         for knumber in range(0, knumber_max + 1):
-            self.iteration(ID, knumber, vessel, beta_method, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E)
+            self.iteration(ID, knumber, vessel, beta_method, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, add_R1, add_R2, add_Cc)
 
         # Plots RMSE for k from 0 to knumber_max
         self.plot_error(ID, vessel, beta_method, knumber_max)
@@ -1451,11 +1454,11 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1"
-    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/circle_of_willis_inlet.dat"
-    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/inverse_problem_Patient.yaml"
-    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/inverse_problem_k=0_fixed_vessels_2and3.yaml"
-    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/P_star_vessel1.txt"
+    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel2"
+    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel2/circle_of_willis_inlet.dat"
+    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel2/inverse_problem_Patient.yaml"
+    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel2/inverse_problem_k=0_fixed_vessels_1and3.yaml"
+    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel2/P_star_vessel2.txt"
 
     updater = OPENBF_Jacobian(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
@@ -1463,7 +1466,7 @@ if __name__ == "__main__":
     updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
 
     # Searches optimized parameters
-    updater.search_opt(20.1, "vessel1", "Morozov", 0.3, 0.00001, 0.001, 0.0001, 0, 0, 0, 20)
+    updater.search_opt(20, "vessel2", "Morozov", 0.3, 0, 0, 0, 0, 0, 0, 1e6, 0, 1e-13, 20)
 
     # for knumber in range(0,21):
     #     updater.Morozov("vessel1", knumber, plot=True)
