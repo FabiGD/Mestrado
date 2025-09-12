@@ -825,9 +825,9 @@ class OPENBF_Jacobian:
             "Rp": "Proximal radius (Rp) [m]",
             "Rd": "Distal radius (Rd) [m]",
             "E": "Elastic modulus (E) [Pa]",
-            "R1": "First peripheral resistance (R1) [Pa⋅s⋅m^-3]",
-            "R2": "Second peripheral resistance (R2) [Pa⋅s⋅m^-3]",
-            "Cc": "Peripheral compliance (Cc) [m^3⋅Pa^-1]"            
+            "R1": "First peripheral resistance (R1) " + r'$[Pa.s.m^{-3}]$',
+            "R2": "Second peripheral resistance (R2) " + r'$[Pa.s.m^{-3}]$',
+            "Cc": "Peripheral compliance (Cc) " + r'$[m^3.Pa^{-1}]$'       
             }
 
         valid_params = [p for p in all_parameters if delta_dict.get(p, 0) != 0]
@@ -851,11 +851,7 @@ class OPENBF_Jacobian:
 
         iterations = np.arange(len(folders))
 
-        # Separate E from others
-        params_main = [p for p in valid_params if p != "E"]
-        has_E = "E" in valid_params
-
-        # Plot relative differences (all together, including E)
+        # Plots relative differences (all together)
         fig2, ax2 = plt.subplots(figsize=(10, 6))
         for p in valid_params:
             vals = np.array(param_data[p])
@@ -877,51 +873,35 @@ class OPENBF_Jacobian:
         plt.close(fig2)
         print(f"Saved: {rel_diff_path}.png, .svg, .pkl")
 
-        # Absolute plot (without E)
-        if params_main:
-            fig1, ax1 = plt.subplots(figsize=(10, 6))
-            for p in params_main:
-                y = param_data[p]
-                label = param_labels.get(p, p)
-                line, = ax1.plot(iterations, y, 'o-', label=label)
-                ax1.axhline(patient_ref[p], linestyle='--', linewidth=2,
-                            color=line.get_color(), label=f'Patient {p} - ' + r'$(\mathbf{\theta_z})$')
-            ax1.set_title(f'Parameter values vs Iterations   ({vessel})', fontsize=14)
-            ax1.set_xlabel('Iterations', fontsize=14)
-            ax1.set_ylabel('Parameter Values', fontsize=14)
-            ax1.grid(True)
-            ax1.legend()
-            fig1.tight_layout()
-            plot_path = os.path.join(plots_dir, f"5.Parameter_values")
-            fig1.savefig(f"{plot_path}.png", dpi=300)
-            fig1.savefig(f"{plot_path}.svg")
+        # Plots absolute values for each valid parameter
+        for p in valid_params:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            y = np.array(param_data[p])
+            ref = patient_ref[p]
+            label = param_labels.get(p, p)
+
+            # Plots parameter evolution
+            ax.plot(iterations, y, 'o-', label = f'Estimated {p} - ' + r'$(\mathbf{\theta_0})$')
+            # Patient line
+            ax.axhline(ref, linestyle='--', linewidth=2,
+                       color=ax.lines[-1].get_color(),
+                       label=f'Patient {p} - ' + r'$(\mathbf{\theta_z})$')
+
+            ax.set_title(f'{label} vs Iterations   ({vessel})', fontsize=14)
+            ax.set_xlabel('Iterations', fontsize=14)
+            ax.set_ylabel(label, fontsize=14)
+            ax.grid(True)
+            ax.legend()
+            fig.tight_layout()
+
+            # Saves the plot
+            plot_path = os.path.join(plots_dir, f"5.Absolute_{p}_values")
+            fig.savefig(f"{plot_path}.png", dpi=300)
+            fig.savefig(f"{plot_path}.svg")
             with open(f"{plot_path}.pkl", "wb") as f:
-                pickle.dump(fig1, f)
-            plt.close(fig1)
+                pickle.dump(fig, f)
+            plt.close(fig)
             print(f"Saved: {plot_path}.png, .svg, .pkl")
-
-        # Exclusive plot for E
-        if has_E:
-            figE, axE = plt.subplots(figsize=(10, 6))
-            axE.yaxis.set_major_formatter(ScalarFormatter(useMathText=False))
-            axE.ticklabel_format(style='plain', axis='y')
-            yE = param_data["E"]
-            axE.plot(iterations, yE, 'o-', color='tab:red', label=param_labels["E"])
-            axE.axhline(patient_ref["E"], linestyle='--', linewidth=2, color='tab:red', label='Patient E - ' + r'$(\mathbf{\theta_z})$')
-
-            axE.set_title(f'Elastic Modulus vs Iterations   ({vessel})', fontsize=14)
-            axE.set_xlabel('Iterations', fontsize=14)
-            axE.set_ylabel('Elastic modulus [Pa]', fontsize=14)
-            axE.grid(True)
-            axE.legend()
-            figE.tight_layout()
-            plot_path_E = os.path.join(plots_dir, f"6.Elastic_Modulus_values")
-            figE.savefig(f"{plot_path_E}.png", dpi=300)
-            figE.savefig(f"{plot_path_E}.svg")
-            with open(f"{plot_path_E}.pkl", "wb") as f:
-                pickle.dump(figE, f)
-            plt.close(figE)
-            print(f"Saved: {plot_path_E}.png, .svg, .pkl")
 
 
     def file_openBF(self, yaml_file, output_folder_name):
@@ -1454,19 +1434,23 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel2"
-    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel2/circle_of_willis_inlet.dat"
-    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel2/inverse_problem_Patient.yaml"
-    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel2/inverse_problem_k=0_fixed_vessels_1and3.yaml"
-    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel2/P_star_vessel2.txt"
+    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel3"
+    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel3/circle_of_willis_inlet.dat"
+    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel3/inverse_problem_Patient.yaml"
+    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel3/inverse_problem_k=0_fixed_vessels_1and2.yaml"
+    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel3/P_star_vessel3.txt"
 
     updater = OPENBF_Jacobian(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
-    # Runs openBF to patient file
-    updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
+    # # Runs openBF to patient file
+    # updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
 
-    # Searches optimized parameters
-    updater.search_opt(20, "vessel2", "Morozov", 0.3, 0, 0, 0, 0, 0, 0, 1e6, 0, 1e-13, 20)
+    # # Searches optimized parameters
+    # updater.search_opt(20.2, "vessel3", "Morozov", 0.3, 0, 0, 0, 0, 0, 0, 1e6, 0, 1e-13, 20)
 
     # for knumber in range(0,21):
     #     updater.Morozov("vessel1", knumber, plot=True)
+
+    add_values = {"h0": 0, "L": 0, "R0": 0, "Rp": 0, "Rd": 0, "E": 0, "R1": 1e6, "R2": 0, "Cc": 1e-13}
+    updater.plot_iter(20.2, "vessel3", add_values, 20)
+
