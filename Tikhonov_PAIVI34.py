@@ -339,10 +339,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
+            W1 = np.diag(1 / (z**2)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Regularizing the solution of the LS-problem
             JkT_W1_Jk = Jk.T @ W1 @ Jk # Jacobian transpose times the Jacobian with W1 matrix
@@ -410,10 +410,10 @@ class OPENBF_Jacobian:
 
         # Tikhonov Regularization matrices
         z = yk_data
-        W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
+        W1 = np.diag(1 / (z**2)) # Weighting matrix
 
         P = k0_param_data
-        W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+        W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
         
         # Creates the regularized B matriz
         B = Jk.T @ W1 @ R_matrix - beta_opt**2 * W2 @ (k_param_data - kstar_data)
@@ -703,10 +703,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
+            W1 = np.diag(1 / (z**2)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Calculates the residual norm
             res = patient_data - yk_data - Jk_data @ deltaP_matrix
@@ -1168,10 +1168,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
+            W1 = np.diag(1 / (z**2)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Creates the A matrix
             A = Jk_data.T @ W1 @ Jk_data + beta**2 * W2
@@ -1348,10 +1348,10 @@ class OPENBF_Jacobian:
 
         # Tikhonov Regularization matrices
         z = yk_data
-        W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
+        W1 = np.diag(1 / (z**2)) # Weighting matrix
 
         P = k0_data
-        W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+        W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
         for beta in beta_values:
 
