@@ -57,7 +57,6 @@ class OPENBF_Jacobian:
         # Adds noise to the first 100 lines of patient_data (standard deviation = 266.64 Pa)
         patient_withnoise = patient_data.copy() # Copies patient_data
         patient_withnoise[:100] = patient_data[:100] + pressure_std * np.random.randn(100)
-        print(pressure_std * np.random.randn(100))
 
         # Adds noise to the last 100 lines of patient_data (standard deviation = 3% of the mean)
         patient_withnoise[-100:] = patient_data[-100:] + velocity_std * np.random.randn(100)
@@ -65,7 +64,7 @@ class OPENBF_Jacobian:
         # Saves the result
         file_path = os.path.join(openBF_dir, "ym_openBF_patient_output", f"{vessel}_withnoise.last")
         np.savetxt(file_path, patient_withnoise, fmt="%.14e")
-        print(f"Partial derivatives file saved: {file_path}")
+        print(f"Patient openBF output with noise saved: {file_path}")
 
 
 
@@ -191,7 +190,7 @@ class OPENBF_Jacobian:
 
         base_file_path = os.path.join(base_dir, f"{vessel}_stacked.last") #!!!
         updated_file_path = os.path.join(updated_dir, f"{vessel}_stacked.last")
-        del_file_path = os.path.join(del_dir, f"{vessel}_del_{parameter}_delta={delta_value}.last")
+        del_file_path = os.path.join(del_dir, f"{vessel}_del_{parameter}_delta={delta_value:.0e}.last")
 
         # Checks if both files exist
         if not os.path.exists(base_file_path) or not os.path.exists(updated_file_path):
@@ -295,7 +294,7 @@ class OPENBF_Jacobian:
         for param in valid_parameters:
             delta = delta_dict[param]
             file_path = os.path.join(openBF_dir, f"partial_deriv_{param}",
-                                        f"{vessel}_del_{param}_delta={delta}.last")
+                                        f"{vessel}_del_{param}_delta={delta:.0e}.last")
 
             if os.path.exists(file_path):
                 matrix = np.loadtxt(file_path)
@@ -338,13 +337,12 @@ class OPENBF_Jacobian:
             yk_data = np.loadtxt(yk_file, comments="#")[:, 3] # Takes only the 4ª column
             k0_data = np.atleast_1d(np.loadtxt(k0_param_file, comments="#"))
 
-            # Regularizing matrices
-            epsilon = 1e-8
+            # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / np.maximum(np.abs(z), epsilon)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Regularizing the solution of the LS-problem
             JkT_W1_Jk = Jk.T @ W1 @ Jk # Jacobian transpose times the Jacobian with W1 matrix
@@ -410,14 +408,13 @@ class OPENBF_Jacobian:
         else:
             raise SystemExit(f"Error: Star paramaters (reliable guess) file not found - {kstar_param_file}")
 
-        # Regularizing matrices
-        epsilon = 1e-8
+        # Tikhonov Regularization matrices
         z = yk_data
-        W1 = np.diag(1 / np.maximum(np.abs(z), epsilon)) # Weighting matrix
+        W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
         P = k0_param_data
-        W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
-
+        W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+        
         # Creates the regularized B matriz
         B = Jk.T @ W1 @ R_matrix - beta_opt**2 * W2 @ (k_param_data - kstar_data)
 
@@ -704,13 +701,12 @@ class OPENBF_Jacobian:
             # Creates deltaP matrix
             deltaP_matrix = kplus_data - k_data
 
-            # W1 and W2 matrices
-            epsilon = 1e-8
+            # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / np.maximum(np.abs(z), epsilon)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Calculates the residual norm
             res = patient_data - yk_data - Jk_data @ deltaP_matrix
@@ -1017,7 +1013,7 @@ class OPENBF_Jacobian:
         else:
             raise ValueError(f"Unknown beta_method: {beta_method}. Please insert 'L_curve' or 'Morozov'.")
 
-        # Creates the pseudoinverse matrix
+        # Creates the A matrix
         self.A_matrix(ID, beta_opt, vessel, knumber)
 
         # Creates the B matrix
@@ -1170,14 +1166,12 @@ class OPENBF_Jacobian:
 
         for beta in beta_values:
 
-            # Regularizing matrices
-            epsilon = 1e-8
+            # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / np.maximum(np.abs(z), epsilon)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
-            #W2 = np.eye(len(valid_parameters)) 
+            W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Creates the A matrix
             A = Jk_data.T @ W1 @ Jk_data + beta**2 * W2
@@ -1353,12 +1347,11 @@ class OPENBF_Jacobian:
         print("Delta = ", delta)
 
         # Tikhonov Regularization matrices
-        epsilon = 1e-8
         z = yk_data
-        W1 = np.diag(1 / np.maximum(np.abs(z), epsilon)) # Weighting matrix
+        W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
         P = k0_data
-        W2 = np.diag(1 / np.maximum(np.abs(P), epsilon)) # W2=L2.T@L2, L2 = Regularization matrix
+        W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
         for beta in beta_values:
 
@@ -1434,23 +1427,20 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel3"
-    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel3/circle_of_willis_inlet.dat"
-    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel3/inverse_problem_Patient.yaml"
-    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel3/inverse_problem_k=0_fixed_vessels_1and2.yaml"
-    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_Windk_vessel3/P_star_vessel3.txt"
+    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2"
+    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2/circle_of_willis_inlet.dat"
+    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2/inverse_problem_Patient.yaml"
+    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2/inverse_problem_k=0_fixed_vessels_1and3.yaml"
+    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2/P_star_vessel2.txt"
 
     updater = OPENBF_Jacobian(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
-    # # Runs openBF to patient file
-    # updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
+    # Runs openBF to patient file
+    #updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
 
-    # # Searches optimized parameters
-    # updater.search_opt(20.2, "vessel3", "Morozov", 0.3, 0, 0, 0, 0, 0, 0, 1e6, 0, 1e-13, 20)
+    # Searches optimized parameters
+    updater.search_opt(23, "vessel2", "Morozov", 0.3, 0.00001, 0.01, 0.0001, 0, 0, 0, 0, 0, 0, 20)
+    #updater.search_opt(21, "vessel3", "Morozov", 0.3, 0, 0, 0, 0, 0, 0, 1e6, 0, 1e-13, 20)
 
-    # for knumber in range(0,21):
-    #     updater.Morozov("vessel1", knumber, plot=True)
 
-    add_values = {"h0": 0, "L": 0, "R0": 0, "Rp": 0, "Rd": 0, "E": 0, "R1": 1e6, "R2": 0, "Cc": 1e-13}
-    updater.plot_iter(20.2, "vessel3", add_values, 20)
 
