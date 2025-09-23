@@ -66,9 +66,48 @@ class OPENBF_Jacobian:
         np.savetxt(file_path, patient_withnoise, fmt="%.14e")
         print(f"Patient openBF output with noise saved: {file_path}")
 
+    def equal_parameters(self, yaml_file):
+        """
+        Checks if parameters R1 and Cc are equal in vessels 2 and 3.
+        Returns True if both are equal, otherwise False.
+        """
+
+        # Checks if yaml file exists
+        if not os.path.exists(yaml_file):
+            raise SystemExit(f"Error: File {yaml_file} not found. Execution stopped.")
+
+        # Loads yaml
+        with open(yaml_file, "r", encoding="utf-8") as f:
+            yaml_data = yaml.safe_load(f) or {}
+
+        if "network" not in yaml_data:
+            print("Error: The 'network' key was not found in the yaml file.")
+            return False
+
+        # Initializes values
+        params_v2, params_v3 = {}, {}
+
+        for item in yaml_data["network"]:
+            if item.get("label") == "vessel2":
+                params_v2["R1"] = item.get("R1")
+                params_v2["Cc"] = item.get("Cc")
+            elif item.get("label") == "vessel3":
+                params_v3["R1"] = item.get("R1")
+                params_v3["Cc"] = item.get("Cc")
+
+        # Checks if values were found
+        if not params_v2 or not params_v3:
+            print(f"Error: Vessel2 or Vessel3 not found in {yaml_file}.")
+            return False
+
+        # Returns boolean comparison
+        return params_v2["R1"] == params_v3["R1"] and params_v2["Cc"] == params_v3["Cc"]
 
 
     def update_yaml(self, knumber, vessel, parameter, add_value):
+        """       
+        Updates the parameter in the specified vessel.
+        """
 
         self.add_value = add_value
         updated_file = os.path.join(openBF_dir, f"updated_{parameter}.yaml")
@@ -100,6 +139,47 @@ class OPENBF_Jacobian:
 
         if not found:
             print(f"Error: Vessel '{vessel}' not found in YAML.")
+
+        # Saves the updated YAML to the updated_file
+        with open(updated_file, "w", encoding="utf-8") as f:
+            yaml.dump(yaml_data, f, default_flow_style=False, allow_unicode=True)
+        print(f"Updated file saved in: {updated_file}")
+
+
+    def update_yaml_tied(self, knumber, parameter, add_value):
+        """ 
+        Simultaneously updates the parameter (e.g., R1 or Cc) in vessels 2 and 3.
+        """
+
+        self.add_value = add_value
+        updated_file = os.path.join(openBF_dir, f"updated_WK.yaml")
+        vessels = ["vessel2", "vessel3"]
+
+        # Loads YAML from k_file
+        if knumber == 0:
+            k_file = os.path.join(openBF_dir, self.k0_file)
+        else:
+            k_file = os.path.join(openBF_dir, f"inverse_problem_k={knumber}.yaml")
+        with open(k_file, "r", encoding="utf-8") as f:
+            yaml_data = yaml.safe_load(f) or {}
+
+        if "network" not in yaml_data:
+            print("Error: The 'network' key was not found in the YAML.")
+            return
+
+        for vessel in vessels:
+            found = False
+            for item in yaml_data["network"]:
+                if item.get("label") == vessel:
+                    if parameter in item:
+                        item[parameter] = item[parameter] + add_value
+                        print(f"Parameter '{parameter}' of vessel '{vessel}' updated to: {item[parameter]}")
+                        found = True
+                    else:
+                        print(f"Error: Parameter '{parameter}' not found in vessel '{vessel}'.")
+                    break
+            if not found:
+                print(f"Error: Vessel '{vessel}' not found in YAML.")
 
         # Saves the updated YAML to the updated_file
         with open(updated_file, "w", encoding="utf-8") as f:
@@ -188,7 +268,7 @@ class OPENBF_Jacobian:
         # Creates the output directory if it does not exist
         os.makedirs(del_dir, exist_ok=True)
 
-        base_file_path = os.path.join(base_dir, f"{vessel}_stacked.last") #!!!
+        base_file_path = os.path.join(base_dir, f"{vessel}_stacked.last") 
         updated_file_path = os.path.join(updated_dir, f"{vessel}_stacked.last")
         del_file_path = os.path.join(del_dir, f"{vessel}_del_{parameter}_delta={delta_value:.0e}.last")
 
@@ -211,62 +291,49 @@ class OPENBF_Jacobian:
         np.savetxt(del_file_path, del_data, fmt="%.14e")
         print(f"Partial derivatives file saved: {del_file_path}")
 
-
-    def plot_openBF(self, vessel, data_dir):
-        """ Plots the openBF output graphs (Pressure/Area/Flow/Velocity vs. Time)
-        and saves them in data_dir.
+    
+    def tied_partial_deriv_files(self, vessel, base_dir, updated_dir, del_dir, parameter):
+        """
+        Subtracts the stacked files of base_dir from the stacked files of updated_dir,
+        divides by the delta parameter and saves the result in del_dir.
         """
 
-        variables = ["P", "u"]
+        data_list = []
 
-        # Creates dictionary to store dataframes
-        data = {var: [] for var in variables}
+        # Calculates the parameter difference
+        delta_value = self.add_value
+        print(f"Parameter '{parameter}' difference: {delta_value}")
 
-        # Reads files and store in dictionary
-        for var in variables:
-            file_path = os.path.join(data_dir, f"{vessel}_{var}.last")
-            df = pd.read_csv(file_path, delim_whitespace=True, header=None)
-            df.columns = ["Time", "Length 1", "Length 2", "Length 3", "Length 4", "Length 5"]
-            data[var].append(df)
+        if delta_value == 0:
+            print("Warning: Parameter difference is zero. Avoiding division by zero.")
+            return
 
-            # data = {
-            #   "P": [df_vessel1_P, df_vessel2_P, df_vessel3_P],
-            #   "u": [df_vessel1_u, df_vessel2_u, df_vessel3_u]
-            # }
+        # Creates the output directory if it does not exist
+        os.makedirs(del_dir, exist_ok=True)
 
-        # Creates folder for saving plots
-        plots_dir = os.path.join(data_dir, "plots")
-        os.makedirs(plots_dir, exist_ok=True)
+        base_file_path = os.path.join(base_dir, f"{vessel}_stacked.last") 
+        updated_file_path = os.path.join(updated_dir, f"{vessel}_stacked.last")
+        del_file_path = os.path.join(del_dir, f"{vessel}_del_{parameter}_delta={delta_value:.0e}.last")
 
-        # Plots graphs
-        for var, label, unit in zip(["P", "u"],
-                                    ["Pressure", "Velocity"],
-                                    ["mmHg", "m/s"]):
-            fig, axs = plt.subplots(3, 1, figsize=(10, 14))
+        # Checks if both files exist
+        if not os.path.exists(base_file_path) or not os.path.exists(updated_file_path):
+            raise SystemExit(f"Error: Files for {vessel} not found. Execution stopped.")
 
-            df = data[var][0]
-            for j in range(1, 6):  # Colunas dos Nós (1 a 5)
-                axs.scatter(df["Time"], df[f"Length {j}"], label=f"Length {j}")
-                axs.plot(df["Time"], df[f"Length {j}"], linestyle='-', alpha=0.6)
-            axs.set_title(f"{vessel.capitalize()}: {label} vs Time")
-            axs.set_xlabel("Time (s)")
-            axs.set_ylabel(f"{label} ({unit})")
-            axs.grid(True)
-            axs.legend()
+        # Loads the files .last
+        base_data = np.loadtxt(base_file_path)
+        updated_data = np.loadtxt(updated_file_path)
 
-            fig.subplots_adjust(hspace=0.7)
+        # Checks if the dimensions are compatible
+        if base_data.shape != updated_data.shape:
+            print(f"Error: Incompatible dimensions for {vessel}: {base_data.shape} vs {updated_data.shape}.")
 
-            # Saves plots in .png .svg and .pdf formats
-            plot_path = os.path.join(plots_dir, f"{var}_plot")
+        # Performs subtraction and division by delta_value
+        del_data = (updated_data - base_data) / delta_value
 
-            plt.savefig(f"{plot_path}.png", dpi=300)
-            plt.savefig(f"{plot_path}.svg")
-            with open(f"{plot_path}.pkl", "wb") as f:
-                pickle.dump(fig, f)
+        # Saves the result
+        np.savetxt(del_file_path, del_data, fmt="%.14e")
+        print(f"Partial derivatives file saved: {del_file_path}")
 
-            plt.close(fig)
-
-            print(f"Plots saved: {plot_path}.png, {plot_path}.svg, {plot_path}.pkl")
 
     def stack_partial_derivatives(self, knumber, vessel, delta_dict, output_path):
         """
@@ -308,6 +375,7 @@ class OPENBF_Jacobian:
             output_file = os.path.join(output_path, f"jacobian_k={knumber}_{vessel}_stacked.txt")
             np.savetxt(output_file, stacked_matrix, fmt="%.14e")
             print(f"Stacked matrix saved in: {output_file}")
+
 
     def A_matrix(self, ID, beta_opt, vessel, knumber):
         """ Creates the A_matrix using the Jacobian matrix and saves it in the folder: "A_matrix_beta={beta:.0e}"."""
@@ -521,7 +589,7 @@ class OPENBF_Jacobian:
             raise SystemExit(f"Error: B matrix file not found - {B_matrix_path}. Execution stopped.")
 
 
-        # Creates the optimized parameters (Pd(k+1)) matrix
+        # Creates the optimized parameters (P(k+1)) matrix
         deltaP_matrix = np.linalg.solve(A_data,B_data)
         print("Shape of deltaP is:", deltaP_matrix.shape)
         deltaP_matrix = deltaP_matrix.ravel()   # Ensures vector (n_params,)
@@ -901,9 +969,8 @@ class OPENBF_Jacobian:
 
 
     def file_openBF(self, yaml_file, output_folder_name):
-        """Runs openBF in Julia for the specified YAML file;
-            stacks the output values;
-            and plots the graphs (Pressure/Area/Flow/Velocity vs. Time)."""
+        """Runs openBF in Julia for the specified YAML file
+            and stacks the output values."""
 
         # Where the yaml_file output files will be
         file_dir = os.path.join(openBF_dir, output_folder_name)
@@ -917,17 +984,15 @@ class OPENBF_Jacobian:
         variables = ["P", "u"]
 
         # Stack openBF outputs for each vessel individually
-        # Plots the simulation output graphs and saves them
         for vessel_stack in vessels:
             self.stack_last_files(vessel_stack, variables, file_dir)
-            #self.plot_openBF(vessel, file_dir)
 
 
     def updated_openBF(self, knumber, vessel, parameter, add_value):
         """ Updates the value of a parameter within a specific vessel;
         runs openBF in Julia for the updated YAML;
-        stacks the output values, calculates the partial derivatives with respect to the modified parameter;
-        and plots the graphs (Pressure/Area/Flow/Velocity vs. Time)."""
+        stacks the output values;
+        calculates the partial derivatives with respect to the modified parameter."""
 
         # Updates the YAML file to the specified parameter
         self.update_yaml(knumber, vessel, parameter, add_value)
@@ -941,15 +1006,7 @@ class OPENBF_Jacobian:
 
         # Runs openBF to updated_file
         updated_file = os.path.join(openBF_dir, f"updated_{parameter}.yaml")
-        self.openBF(updated_file,updated_dir)
-
-        # Stacking order of vessels and variables
-        vessels = ["vessel1", "vessel2", "vessel3"]
-        variables = ["P", "u"]
-
-        # Stack openBF outputs for each vessel individually
-        for vessel_stack in vessels:
-            self.stack_last_files(vessel_stack, variables, updated_dir)
+        self.file_openBF(updated_file,updated_dir)
 
         # Path to the partial derivatives directory
         del_dir = os.path.join(openBF_dir, f"partial_deriv_{parameter}")
@@ -957,18 +1014,48 @@ class OPENBF_Jacobian:
         # Calculates and creates the partial derivatives files
         self.partial_deriv_files(vessel, base_dir, updated_dir, del_dir, parameter)
 
-        # Plots the simulation output graphs and saves them
-        #self.plot_openBF(vessel, updated_dir)
+    def tied_updated_openBF(self, knumber, parameter, add_value):
+        """ Updates the value of a parameter for both vessels 2 and 3;
+        runs openBF in Julia for the updated YAML;
+        stacks the output values;
+        calculates the partial derivatives with respect to the modified parameter."""
 
-    def iteration(self, ID, knumber, vessel, beta_method, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, add_R1, add_R2, add_Cc):
-        # ATUALIZAR DESCRICAO """Creates the Jacobian pseudoinverse matrix considering the increments specified for each parameter,
-        #multiplies it to the R matrix and generates the optimized parameters."""
-        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E, "R1": add_R1, "R2": add_R2, "Cc": add_Cc}
+        parameters = ["R1", "Cc"]
+
+        # Updates the YAML file to the specified parameter
+        for parameter in parameters:
+            self.update_yaml_tied(knumber, parameter, add_value)
+
+        # Where the k_file output files are
+        base_dir = os.path.join(openBF_dir, f"y{knumber}_openBF_output")
+        os.makedirs(base_dir, exist_ok=True)
+
+        # Where the updated_file output files will be
+        updated_dir = os.path.join(openBF_dir, f"openBF_updated_WK")
+        os.makedirs(updated_dir, exist_ok=True)
+
+        # Runs openBF to updated_file and stacks the openBF output
+        updated_file = os.path.join(openBF_dir, f"updated_WK.yaml")
+        self.file_openBF(updated_file,updated_dir)
+
+        # Path to the partial derivatives directory
+        del_dir = os.path.join(openBF_dir, f"partial_deriv_WK")
+
+        # Calculates and creates the partial derivatives files
+        vessels = ["vessel2", "vessel3"]
+        parameters = ["R1", "Cc"]
+        for vessel in vessels:
+            for parameter in parameters:
+                self.tied_partial_deriv_files(vessel, base_dir, updated_dir, del_dir, parameter)
+
+
+    def iteration(self, ID, knumber, vessel, beta_method, alpha, delta_dict):
+        """Runs an iteration to obtain the optimized parameters P(k+1)."""
 
         print(f"\n=== Starting iteration {knumber}, ID: {ID} ===\n")
 
         # Filters parameters with delta != 0
-        valid_parameters = [param for param in add_values if add_values[param] != 0]
+        valid_parameters = [param for param in delta_dict if delta_dict[param] != 0]
         print (f"The valid parameters are: {valid_parameters}.")
 
         if knumber == 0:
@@ -981,19 +1068,20 @@ class OPENBF_Jacobian:
             # Runs openBF to 0-iteration YAML file
             self.file_openBF(k_yaml_file, f"y{knumber}_openBF_output")
 
+        # Updates the paramater and calculates its partial derivative
         for parameter in valid_parameters:
-            self.updated_openBF(knumber, vessel, parameter, add_values[parameter])
+            self.updated_openBF(knumber, vessel, parameter, delta_dict[parameter])
 
         # Path to the Jacobian matrices directory
         output_path = os.path.join(openBF_dir, f"jacobians")
-        self.stack_partial_derivatives(knumber, vessel, add_values, output_path)
+        self.stack_partial_derivatives(knumber, vessel, delta_dict, output_path)
 
         # Creates the P0 matrix (parameters of the k-iteration yaml)
         if knumber == 0:
             yaml_file = self.k0_file
             param_directory = "P0"
 
-            self.Pk(vessel, add_values, param_directory, yaml_file)
+            self.Pk(vessel, delta_dict, param_directory, yaml_file)
 
 
         if beta_method == "L_curve":
@@ -1034,15 +1122,112 @@ class OPENBF_Jacobian:
         if not os.path.exists(base_yaml_path):
             raise SystemExit(f"Error: File {base_yaml_path} not found. Execution stopped.")
 
-        self.update_yaml_with_optimized_parameters(vessel, add_values, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
+        self.update_yaml_with_optimized_parameters(vessel, delta_dict, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
+
+        # Runs openBF to the new/optimized yaml file
+        self.file_openBF(opt_output_yaml_path, f"y{knumber+1}_openBF_output")
+
+    
+    def tied_iteration(self, ID, knumber, beta_method, alpha, delta_dict):
+        """Runs an iteration to obtain the optimized parameters P(k+1) for R1 and Cc. Updates vessels 2 and 3 simultaneously with the same value."""
+
+        print(f"\n=== Starting iteration {knumber}, ID: {ID} ===\n")
+
+        # Defines valid parameters
+        # Warning: Considering a two-element Windkessel model
+        valid_parameters = ["R1", "Cc"]
+        print (f"The valid parameters are: {valid_parameters}.")
+
+        # Runs simulation for k=0
+        if knumber == 0:
+            k_yaml_file = os.path.join(openBF_dir, self.k0_file)
+
+            # Checks if file exists
+            if not os.path.exists(k_yaml_file):
+                raise SystemExit(f"Error: File {k_yaml_file} not found. Execution stopped.")
+            
+            # Checks if the initial guess for R1 and Cc in vessels 2 and 3 are equal
+            if self.equal_parameters(k_yaml_file)==True:
+                # Runs openBF to 0-iteration YAML files
+                self.file_openBF(k_yaml_file, f"y{knumber}_openBF_output")
+            else: 
+                raise SystemExit(f"Error: Please, insert the same values for R1 and Cc in vessels 2 and 3: {k_yaml_file}.")
+
+        # Updates R1 and Cc in vessels 2 and 3 and calculates their partial derivatives
+        for parameter in valid_parameters:
+            self.tied_updated_openBF(knumber, parameter, delta_dict[parameter])
+
+        # Voltar daqui: preciso concatenar verticalmente as der. parciais dos vasos 2 e 3 antes de montar a jacobiana
+
+        # # Stacks vertically vessels 2 and 3 partial derivatives
+        # # Reads data from the .last file
+        # data = np.loadtxt(file_path)
+        # data_list.append(data)
+
+        # # Stacks files vertically (A, P, Q, u)
+        # stacked_data = np.vstack(data_list)
+
+        # Path to the Jacobian matrices directory
+        output_path = os.path.join(openBF_dir, f"jacobians")
+        self.stack_partial_derivatives(knumber, vessel, delta_dict, output_path)
+
+        # Creates the P0 matrix (parameters of the k-iteration yaml)
+        if knumber == 0:
+            yaml_file = self.k0_file
+            param_directory = "P0"
+
+            self.Pk(vessel, delta_dict, param_directory, yaml_file)
+
+
+        if beta_method == "L_curve":
+            # Calculates the optimized parameters with a initial guess for beta
+            beta_guess = 1e-4  
+            self.A_matrix(ID, beta_guess, vessel, knumber)
+            self.B_matrix(ID, beta_guess, vessel, knumber)
+            self.optimized_parameters(ID, vessel, alpha, beta_guess, knumber)
+
+            # Finds optimal beta
+            beta_opt = self.L_curve(vessel, knumber, plot=True)
+
+        if beta_method == "Morozov":
+            # Finds optimal beta
+            beta_opt = self.Morozov(vessel, knumber, plot=True)
+
+        else:
+            raise ValueError(f"Unknown beta_method: {beta_method}. Please insert 'L_curve' or 'Morozov'.")
+
+        # Creates the A matrix
+        self.A_matrix(ID, beta_opt, vessel, knumber)
+
+        # Creates the B matrix
+        self.B_matrix(ID, beta_opt, vessel, knumber)
+
+        # Creates the optimized parameters matrix
+        self.optimized_parameters(ID, vessel, alpha, beta_opt, knumber)
+
+        # Updates YAML with optimized parameters
+        if knumber == 0:
+            base_yaml_path = os.path.join(openBF_dir, self.k0_file)
+        else:
+            base_yaml_path = os.path.join(openBF_dir, f"inverse_problem_k={knumber}.yaml")
+        opt_param_files_dir = os.path.join(openBF_dir, f"optimized_parameters_P{knumber+1}")
+        opt_output_yaml_path = os.path.join(openBF_dir, f"inverse_problem_k={knumber+1}.yaml")
+
+        # Checks if file exists
+        if not os.path.exists(base_yaml_path):
+            raise SystemExit(f"Error: File {base_yaml_path} not found. Execution stopped.")
+
+        self.update_yaml_with_optimized_parameters(vessel, delta_dict, base_yaml_path, opt_param_files_dir, opt_output_yaml_path)
 
         # Runs openBF to the new/optimized yaml file
         self.file_openBF(opt_output_yaml_path, f"y{knumber+1}_openBF_output")
 
 
-    def search_opt(self, ID, vessel, beta_method, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, add_R1, add_R2, add_Cc, knumber_max):
+    def search_opt(self, ID, vessel, beta_method, alpha, delta_dict, knumber_max, tied_iteration=False):
 
-        add_values = {"h0": add_h0, "L": add_L, "R0": add_R0, "Rp": add_Rp, "Rd": add_Rd, "E": add_E, "R1": add_R1, "R2": add_R2, "Cc": add_Cc}
+        # Filters parameters with delta != 0
+        parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
+        valid_parameters = [param for param in parameters if delta_dict[param] != 0]
 
         # Starts chronometer
         start = time.time()
@@ -1050,61 +1235,31 @@ class OPENBF_Jacobian:
         # Adds noise to patient output file 
         self.add_noise(vessel)
 
-        # Runs iteration for k from 0 to knumber_max
-        for knumber in range(0, knumber_max + 1):
-            self.iteration(ID, knumber, vessel, beta_method, alpha, add_h0, add_L, add_R0, add_Rp, add_Rd, add_E, add_R1, add_R2, add_Cc)
+        if tied_iteration==True:
+
+            # Checks if only R1 and Cc are valid parameters
+            if valid_parameters == {"R1","Cc"}:
+                # Begins iteration with R1 and Cc of vessel 2 and 3 tied
+                for knumber in range(0, knumber_max + 1):
+                    self.tied_iteration(ID, knumber, beta_method, alpha, delta_dict)
+            else:
+                raise SystemExit(f"Error: Tied iteration requires that the only valid parameters be R1 and Cc. Execution stopped.")
+        else:
+            # Runs iteration for k from 0 to knumber_max
+            for knumber in range(0, knumber_max + 1):
+                self.iteration(ID, knumber, vessel, beta_method, alpha, delta_dict)
 
         # Plots RMSE for k from 0 to knumber_max
         self.plot_error(ID, vessel, beta_method, knumber_max)
 
         # Plots the parameters for each iteration
-        self.plot_iter(ID, vessel, add_values, knumber_max)
+        self.plot_iter(ID, vessel, delta_dict, knumber_max)
 
         # Ends chronometer and prints time
         end = time.time()
         minutes = (end - start)/60
         print(f"Elapsed time: {minutes:.3f} minutes.")
 
-
-    def diagnose_scales(self, vessel, knumber, beta, valid_parameters):
-
-        # Carrega Jk, y_m, y_k
-        Jk = np.loadtxt(os.path.join(openBF_dir, "jacobians", f"jacobian_k={knumber}_{vessel}_stacked.txt"))
-        ym = np.loadtxt(os.path.join(openBF_dir, "ym_openBF_patient_output", f"{vessel}_withnoise.last"))
-        yk = np.loadtxt(os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"{vessel}_stacked.last"))[:,3:4]
-        Pk = np.loadtxt(os.path.join(openBF_dir, f"optimized_parameters_P{knumber}", f"Pk_{vessel}.last"))
-        P0 = np.loadtxt(os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last"))
-
-        # D diagonal na ordem dos parâmetros válidos
-        I = np.eye(len(valid_parameters))
-
-        # Matrizes 
-        JT_J = Jk.T @ Jk
-        A = JT_J + beta**2 * I
-        B = Jk.T @ (ym - yk) - beta**2 * (Pk - P0)
-
-        # Normas e espectros
-        n_J = np.linalg.norm(JT_J, 2)
-        n_betaI = np.linalg.norm(beta**2 * I, 2)   # = beta**2 * max(diag(D))
-        r = n_betaI / n_J if n_J>0 else np.inf
-
-        # Condições
-        sv_A = np.linalg.svd(A, compute_uv=False)
-        sv_J = np.linalg.svd(JT_J, compute_uv=False)
-        cond_A = (sv_A.max()/sv_A.min()) if sv_A.min()>0 else np.inf
-        cond_J = (sv_J.max()/sv_J.min()) if sv_J.min()>0 else np.inf
-
-        # Soluções com e sem βD
-        dp_noI = np.linalg.lstsq(JT_J, B, rcond=None)[0]
-        dp_withI = np.linalg.solve(A, B)
-        rel_step_change = np.linalg.norm(dp_withI- dp_noI)/max(1e-16, float(np.linalg.norm(dp_noI)))
-
-        print(f"||J^T M J||_2     = {n_J: .3e}")
-        print(f"||β D||_2         = {n_betaI: .3e}")
-        print(f"ratio ||βD||/||J||= {r: .3e}   (se << 1, D é irrelevante)")
-        print(f"cond(J^T M J)     = {cond_J: .3e}")
-        print(f"cond(A)            = {cond_A: .3e}")
-        print(f"ΔP change (with D vs no D): {rel_step_change: .3e}")
 
 
     def L_curve(self, vessel, knumber, plot=True):
@@ -1439,7 +1594,8 @@ if __name__ == "__main__":
     #updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
 
     # Searches optimized parameters
-    updater.search_opt(23, "vessel2", "Morozov", 0.3, 0.00001, 0.01, 0.0001, 0, 0, 0, 0, 0, 0, 20)
+    add_values = {"h0": 0.00001, "L": 0.01, "R0": 0.0001, "Rp": 0, "Rd": 0, "E": 0, "R1": 0, "R2": 0, "Cc": 0}
+    updater.search_opt(23, "vessel2", "Morozov", 0.3, add_values, 20, tied_iteration=True)
     #updater.search_opt(21, "vessel3", "Morozov", 0.3, 0, 0, 0, 0, 0, 0, 1e6, 0, 1e-13, 20)
 
 
