@@ -298,8 +298,6 @@ class OPENBF_Jacobian:
         divides by the delta parameter and saves the result in del_dir.
         """
 
-        data_list = []
-
         # Calculates the parameter difference
         delta_value = self.add_value
         print(f"Parameter '{parameter}' difference: {delta_value}")
@@ -377,6 +375,59 @@ class OPENBF_Jacobian:
             print(f"Stacked matrix saved in: {output_file}")
 
 
+    def tied_stack_partial_derivatives(self, knumber, delta_dict, output_path):
+        """
+        Vertically stacks the 4th column of the partial derivative matrices for each vessel;
+        Horizontally stacks only the 4th column of the partial derivative matrices for each parameter.
+
+        """
+        vessels = ["vessel2", "vessel3"]
+        parameters = ["R1", "Cc"]
+
+        # Filters parameters with delta != 0
+        valid_parameters = [param for param in parameters if delta_dict[param] != 0]
+
+        for param in parameters:
+            if delta_dict[param] == 0:
+                print(
+                    f"Warning: Variation of the parameter '{param}' is zero. It will be excluded from the Jacobian matrix.")
+
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+
+        # List to save the Jacobian columns
+            jacobian_columns = []
+
+            # For each parameter, stack the derivatives of the vessels
+            for param in valid_parameters:
+                col_blocks = []
+                delta = delta_dict[param]
+
+                for vessel in vessels:
+                    file_path = os.path.join(
+                        openBF_dir, "partial_deriv_WK",
+                        f"{vessel}_del_{param}_delta={delta:.0e}.last"
+                    )
+
+                    if not os.path.exists(file_path):
+                        raise SystemExit(f"Error: File not found - {file_path}")
+
+                    matrix = np.loadtxt(file_path)
+                    fourth_column = matrix[:, 3].reshape(-1, 1)
+                    col_blocks.append(fourth_column)
+
+                # Stacks the vessels vertically to form the Jacobian matrix column
+                jacobian_column = np.vstack(col_blocks)
+                jacobian_columns.append(jacobian_column)
+
+            # Horizontally stacks all the columns to form the complete Jacobian matrix
+            if jacobian_columns:
+                J = np.hstack(jacobian_columns)
+                output_file = os.path.join(output_path, f"jacobian_k={knumber}_vessels2and3.txt")
+                np.savetxt(output_file, J, fmt="%.14e")
+                print(f"Jacobian matrix saved in: {output_file}")
+
+
     def A_matrix(self, ID, beta_opt, vessel, knumber):
         """ Creates the A_matrix using the Jacobian matrix and saves it in the folder: "A_matrix_beta={beta:.0e}"."""
 
@@ -426,6 +477,60 @@ class OPENBF_Jacobian:
 
         else:
             raise SystemExit(f"Error: File not found - {file_path}. Execution stopped.")
+        
+
+    def tied_A_matrix(self, ID, beta_opt, knumber):
+        """ Creates the A_matrix using the Jacobian matrix and saves it in the folder: "A_matrix_beta={beta:.0e}". 
+            Used in tied_iteration."""
+
+        file_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_vessels2and3.txt")
+
+        if os.path.exists(file_path):
+            Jk = np.loadtxt(file_path) # Loads the Jacobian matrix
+            if Jk.ndim == 1:
+                Jk = Jk.reshape(-1, 1)
+
+            # Required files paths
+            # Uses the vessel 2 files as they are only used for scaling purposes
+            yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"vessel2_stacked.last")
+            k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_vessel2.last")
+            
+            # Checks if files exist
+            required_files = [
+                yk_file,
+                k0_param_file
+            ]
+
+            for file_path in required_files:
+                if not os.path.exists(file_path):
+                    raise SystemExit(f"Error: Required file '{file_path}' not found. Execution stopped.")
+
+            # Loads files ignoring comments
+            yk_data = np.loadtxt(yk_file, comments="#")[:, 3] # Takes only the 4ª column
+            k0_data = np.atleast_1d(np.loadtxt(k0_param_file, comments="#"))
+
+            # Tikhonov Regularization matrices
+            z = yk_data
+            W1 = np.diag(1 / (z**2)) # Weighting matrix
+
+            P = k0_data
+            W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+
+            # Regularizing the solution of the LS-problem
+            JkT_W1_Jk = Jk.T @ W1 @ Jk # Jacobian transpose times the Jacobian with W1 matrix
+            A_matrix = JkT_W1_Jk + beta_opt**2 * W2
+
+            # Saves A matrix 
+            output_dir = os.path.join(openBF_dir, f"A_matrix_ID={ID}")
+            os.makedirs(output_dir, exist_ok=True)  # Creates the folder if it does not exist
+
+            output_file = os.path.join(output_dir, f"A_matrix_WK.txt")
+            np.savetxt(output_file, A_matrix, fmt="%.14e")
+            print(f"A matrix saved in: {output_file}")
+
+        else:
+            raise SystemExit(f"Error: File not found - {file_path}. Execution stopped.")
+
 
     def B_matrix(self, ID, beta_opt, vessel, knumber):
 
@@ -494,6 +599,76 @@ class OPENBF_Jacobian:
         B_file = os.path.join(B_dir, f"B_matrix_{vessel}_ID={ID}.last")
         np.savetxt(B_file, np.atleast_1d(B), fmt="%.14e")
         print(f"B matrix saved: {B_file}")
+
+
+    def tied_B_matrix(self, ID, beta_opt, knumber):
+
+        # Path to the jacobian matrix file
+        file_path = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_vessels2and3.txt")
+        if os.path.exists(file_path):
+            Jk = np.loadtxt(file_path) # Loads the Jacobian matrix
+        else:
+            raise SystemExit(f"Error: Jacobian matrix file not found - {file_path}")
+
+        # Loads the data from the patient openBF output
+        patient_output = os.path.join(openBF_dir, "ym_openBF_patient_output", f"{vessel}_withnoise.last")
+        if not os.path.exists(patient_output):
+            raise SystemExit(f"Error: Patient output file not found - {patient_output}")
+        patient_data = np.loadtxt(patient_output, comments="#")
+
+        # Loads the simulation output corresponding to the guess
+        yk_output = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"{vessel}_stacked.last")
+        if not os.path.exists(yk_output):
+            raise SystemExit(f"Error: Output file for iteration {knumber} not found - {yk_output}")
+        yk_data = np.loadtxt(yk_output, comments="#")[:, 3] # Only takes the 3rd knot
+
+        # Residual matrix
+        R_matrix = patient_data - yk_data
+
+        # Loads the iteration k paramaters and initial parameters (Pk and P0)
+        k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
+        if knumber == 0:
+            k_param_file = os.path.join(openBF_dir, "P0", f"Pk_{vessel}.last")
+        else:
+            k_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{knumber}", f"Pk_{vessel}.last")
+
+
+        if os.path.exists(k0_param_file):
+            k0_param_data = np.loadtxt(k0_param_file)
+        else:
+            raise SystemExit(f"Error: Initial parameters file not found - {k0_param_file}")
+        
+        if os.path.exists(k_param_file):
+            k_param_data = np.loadtxt(k_param_file)
+        else:
+            raise SystemExit(f"Error: Iteration parameters file not found - {k_param_file}")
+        
+        # Loads the star paramaters (reliable guess)
+        kstar_param_file = self.kstar_file
+        if os.path.exists(kstar_param_file):
+            kstar_data = np.loadtxt(kstar_param_file)
+        else:
+            raise SystemExit(f"Error: Star paramaters (reliable guess) file not found - {kstar_param_file}")
+
+        # Tikhonov Regularization matrices
+        z = yk_data
+        W1 = np.diag(1 / (z**2)) # Weighting matrix
+
+        P = k0_param_data
+        W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+        
+        # Creates the regularized B matriz
+        B = Jk.T @ W1 @ R_matrix - beta_opt**2 * W2 @ (k_param_data - kstar_data)
+
+        # Where the B matrix files will be
+        B_dir = os.path.join(openBF_dir, "B_matrix")
+        os.makedirs(B_dir, exist_ok=True)
+
+        # Saves the B matrix in a file
+        B_file = os.path.join(B_dir, f"B_matrix_WK_ID={ID}.last")
+        np.savetxt(B_file, np.atleast_1d(B), fmt="%.14e")
+        print(f"B matrix saved: {B_file}")
+
 
     def Pk(self, vessel, delta_dict, param_directory, yaml_file):
         """Loads the parameters of a yaml file and saves it in a directory."""
@@ -1157,33 +1332,26 @@ class OPENBF_Jacobian:
         for parameter in valid_parameters:
             self.tied_updated_openBF(knumber, parameter, delta_dict[parameter])
 
-        # Voltar daqui: preciso concatenar verticalmente as der. parciais dos vasos 2 e 3 antes de montar a jacobiana
-
-        # # Stacks vertically vessels 2 and 3 partial derivatives
-        # # Reads data from the .last file
-        # data = np.loadtxt(file_path)
-        # data_list.append(data)
-
-        # # Stacks files vertically (A, P, Q, u)
-        # stacked_data = np.vstack(data_list)
-
-        # Path to the Jacobian matrices directory
+        # Creates the Jacobian matrix
         output_path = os.path.join(openBF_dir, f"jacobians")
-        self.stack_partial_derivatives(knumber, vessel, delta_dict, output_path)
+        self.tied_stack_partial_derivatives(knumber, delta_dict, output_path)
 
         # Creates the P0 matrix (parameters of the k-iteration yaml)
         if knumber == 0:
             yaml_file = self.k0_file
             param_directory = "P0"
 
-            self.Pk(vessel, delta_dict, param_directory, yaml_file)
+            # Gets the parameters for vessels 2 and 3 at iteration 0 (they must be the same)
+            vessels = ["vessel2", "vessel3"]
+            for vessel_P0 in vessels:
+                self.Pk(vessel_P0, delta_dict, param_directory, yaml_file)
 
 
         if beta_method == "L_curve":
             # Calculates the optimized parameters with a initial guess for beta
             beta_guess = 1e-4  
-            self.A_matrix(ID, beta_guess, vessel, knumber)
-            self.B_matrix(ID, beta_guess, vessel, knumber)
+            self.tied_A_matrix(ID, beta_guess, knumber)
+            self.tied_B_matrix(ID, beta_guess, knumber)  # Voltar daqui
             self.optimized_parameters(ID, vessel, alpha, beta_guess, knumber)
 
             # Finds optimal beta
@@ -1197,10 +1365,10 @@ class OPENBF_Jacobian:
             raise ValueError(f"Unknown beta_method: {beta_method}. Please insert 'L_curve' or 'Morozov'.")
 
         # Creates the A matrix
-        self.A_matrix(ID, beta_opt, vessel, knumber)
+        self.tied_A_matrix(ID, beta_opt, knumber)
 
         # Creates the B matrix
-        self.B_matrix(ID, beta_opt, vessel, knumber)
+        self.tied_B_matrix(ID, beta_opt, knumber)
 
         # Creates the optimized parameters matrix
         self.optimized_parameters(ID, vessel, alpha, beta_opt, knumber)
@@ -1225,6 +1393,10 @@ class OPENBF_Jacobian:
 
     def search_opt(self, ID, vessel, beta_method, alpha, delta_dict, knumber_max, tied_iteration=False):
 
+        # For the user's knowledge
+        if tied_iteration and vessel != "NA":
+            print("Warning: 'vessel' is ignored when tied_iteration=True. Use 'NA' for clarity.")
+
         # Filters parameters with delta != 0
         parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
@@ -1232,28 +1404,45 @@ class OPENBF_Jacobian:
         # Starts chronometer
         start = time.time()
 
-        # Adds noise to patient output file 
-        self.add_noise(vessel)
 
         if tied_iteration==True:
 
             # Checks if only R1 and Cc are valid parameters
             if valid_parameters == {"R1","Cc"}:
+
+                vessels = ["vessel2", "vessel3"]
+
+                # Adds noise to patient output files
+                for vessel_noise in vessels: 
+                    self.add_noise(vessel_noise)
+
                 # Begins iteration with R1 and Cc of vessel 2 and 3 tied
                 for knumber in range(0, knumber_max + 1):
                     self.tied_iteration(ID, knumber, beta_method, alpha, delta_dict)
+
+                for vessel_plot in vessels:
+                    # Plots RMSE for k from 0 to knumber_max
+                    self.plot_error(ID, vessel_plot, beta_method, knumber_max)
+
+                    # Plots the parameters for each iteration
+                    self.plot_iter(ID, vessel_plot, delta_dict, knumber_max)
+
             else:
                 raise SystemExit(f"Error: Tied iteration requires that the only valid parameters be R1 and Cc. Execution stopped.")
+            
         else:
+            # Adds noise to patient output file 
+            self.add_noise(vessel)
+
             # Runs iteration for k from 0 to knumber_max
             for knumber in range(0, knumber_max + 1):
                 self.iteration(ID, knumber, vessel, beta_method, alpha, delta_dict)
 
-        # Plots RMSE for k from 0 to knumber_max
-        self.plot_error(ID, vessel, beta_method, knumber_max)
+            # Plots RMSE for k from 0 to knumber_max
+            self.plot_error(ID, vessel, beta_method, knumber_max)
 
-        # Plots the parameters for each iteration
-        self.plot_iter(ID, vessel, delta_dict, knumber_max)
+            # Plots the parameters for each iteration
+            self.plot_iter(ID, vessel, delta_dict, knumber_max)
 
         # Ends chronometer and prints time
         end = time.time()
