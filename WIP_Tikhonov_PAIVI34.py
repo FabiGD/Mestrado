@@ -2226,10 +2226,6 @@ class OPENBF_Jacobian:
 
     def search_opt(self, ID, vessel, beta_method, alpha, delta_dict, knumber_max, tied_iteration=False):
 
-        # For the user's knowledge
-        if tied_iteration and vessel != "NA":
-            raise SystemExit(f"'vessel' is ignored when tied_iteration=True. Use 'NA' for clarity.")
-
         # Filters parameters with delta != 0
         parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
@@ -2238,6 +2234,10 @@ class OPENBF_Jacobian:
         start = time.time()
 
         if tied_iteration==True:
+
+            # For the user's knowledge
+            if vessel != "NA":
+                raise SystemExit(f"Error: 'vessel' is ignored when tied_iteration=True. Use 'NA' for clarity.")
 
             # Checks if only R1 and Cc are valid parameters
             if valid_parameters == {"R1","Cc"}:
@@ -2286,11 +2286,11 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2"
-    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2/circle_of_willis_inlet.dat"
-    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2/inverse_problem_Patient.yaml"
-    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2/inverse_problem_k=0_fixed_vessels_1and3.yaml"
-    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel2/P_star_vessel2.txt"
+    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1"
+    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/circle_of_willis_inlet.dat"
+    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/inverse_problem_Patient.yaml"
+    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/inverse_problem_k=0_fixed_vessels_2and3.yaml"
+    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_vessel1/P_star_vessel1.txt"
 
     updater = OPENBF_Jacobian(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
@@ -2299,7 +2299,7 @@ if __name__ == "__main__":
 
     # Searches optimized parameters
     add_values = {"h0": 0.00001, "L": 0.01, "R0": 0.0001, "Rp": 0, "Rd": 0, "E": 0, "R1": 0, "R2": 0, "Cc": 0}
-    updater.search_opt(23, "vessel2", "Morozov", 0.3, add_values, 20, tied_iteration=True)
+    updater.search_opt(24.1, "vessel1", "Morozov", 0.3, add_values, 20, tied_iteration=False)
     #updater.search_opt(21, "vessel3", "Morozov", 0.3, 0, 0, 0, 0, 0, 0, 1e6, 0, 1e-13, 20)
 
 
