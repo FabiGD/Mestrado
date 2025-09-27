@@ -1232,7 +1232,261 @@ class OPENBF_Jacobian:
         print(f" - {plot_path3}.png, .svg, .pkl")
 
 
+    def tied_plot_error(self, ID, beta_method, knumber_max):
+        # Plots the total error vs. iteration
+
+        plt.close('all')
+        residual_error_append = []
+        solution_error_append = []
+        
+
+        for knumber in range(0, knumber_max + 1):
+
+            kplus = knumber + 1
+
+            # Files paths
+            patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"vessels2and3_withnoise_stacked.last")
+            yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"vessels2and3_stacked.last")
+            Jk_file = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_vessels2and3.txt")
+            kplus_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{kplus}", f"Pk_vessels2and3.last")
+            k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_vessel2.last")
+            if knumber == 0:
+                k_param_file = os.path.join(openBF_dir, "P0", f"Pk_vessel2.last")
+            else:
+                k_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{knumber}", f"Pk_vessels2and3.last")
+            kstar_param_file = self.kstar_file
+
+            # Checks if files exist
+            required_files = [
+                patient_file,
+                yk_file,
+                Jk_file,
+                kplus_param_file,
+                k0_param_file,
+                k_param_file,
+                kstar_param_file
+            ]
+
+            for file_path in required_files:
+                if not os.path.exists(file_path):
+                    raise SystemExit(f"Error: Required file '{file_path}' not found. Execution stopped.")
+
+
+            # Loads files ignoring comments
+            patient_data = np.loadtxt(patient_file, comments="#")
+            yk_data = np.loadtxt(yk_file, comments="#")
+            Jk_data = np.loadtxt(Jk_file, comments="#")
+            kplus_data = np.loadtxt(kplus_param_file, comments="#")
+            k0_data = np.loadtxt(k0_param_file, comments="#") # verificar se apago
+            k_data = np.loadtxt(k_param_file, comments="#")
+            kstar_data = np.loadtxt(kstar_param_file, comments="#")
+
+            # Corrects Jk dimension 
+            if Jk_data.ndim == 1:
+                Jk_data = Jk_data.reshape(-1, 1) # (200,) -> (200,1)
+
+            # Creates deltaP matrix
+            deltaP_matrix = kplus_data - k_data
+
+            # Tikhonov Regularization matrices
+            z = yk_data
+            W1 = np.diag(1 / (z**2)) # Weighting matrix
+
+            P = k0_data
+            W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+
+            # Calculates the residual norm
+            res = patient_data - yk_data - Jk_data @ deltaP_matrix
+            res_error = 0.5 * (res.T @ W1 @ res)
+
+            # Stores it to plot
+            residual_error_append.append(res_error)
+
+            # Finds optimal beta
+            if beta_method == "L_curve":
+                beta_opt = self.Lcurve_dict.get(knumber, list(self.Lcurve_dict.values())[-1])
+            if beta_method == "Morozov":
+                beta_opt = self.Morozov_dict.get(knumber, list(self.Morozov_dict.values())[-1])
+            else:
+                raise ValueError(f"Unknown beta_method: {beta_method}. Please insert 'L_curve' or 'Morozov'.")
+
+            # Calculates the solution norm
+            sol = np.atleast_1d((kplus_data - kstar_data)) 
+            sol_error = 0.5 * beta_opt**2 * (sol.T @ W2 @ sol)
+
+            # Stores it to plot
+            solution_error_append.append(sol_error)
+
+
+        # Iterations: 0 to knumber_max
+        iterations = np.arange(0, knumber_max + 1)
+
+        # Plots directory
+        plots_dir = os.path.join(openBF_dir, f"iteration_plots_ID={ID}")
+        os.makedirs(plots_dir, exist_ok=True)
+
+        # 1. Sum plot
+        total_error_append = np.array(residual_error_append) + np.array(solution_error_append)
+
+        fig3 = plt.figure(figsize=(8, 5))
+        plt.plot(iterations, total_error_append, marker='^', linestyle='-', color='tab:green')
+        plt.xlabel('Iterations')
+        plt.ylabel(r'$F = \frac{1}{2} [\|\mathbf{z}-\mathbf{h}(\mathbf{\theta_0})-\mathbf{J_k}(\mathbf{\theta}-\mathbf{\theta_0})\|_{\mathbf{W_1}}^2 + \beta^2 \|\mathbf{\theta}-\mathbf{\theta^*}\|_{\mathbf{W_2}}^2]$')
+        plt.title(r'Functional: $F = \frac{1}{2} [\|\mathbf{z}-\mathbf{h}(\mathbf{\theta_0})-\mathbf{J_k}(\mathbf{\theta}-\mathbf{\theta_0})\|_{\mathbf{W_1}}^2 + \beta^2 \|\mathbf{\theta}-\mathbf{\theta^*}\|_{\mathbf{W_2}}^2]$' + f'   (Vessels 2 and 3)')
+        plt.grid(True)
+        plt.tight_layout()
+
+        plot_path3 = os.path.join(plots_dir, f"1.Functional")
+        plt.savefig(f"{plot_path3}.png", dpi=300)
+        plt.savefig(f"{plot_path3}.svg")
+        with open(f"{plot_path3}.pkl", "wb") as f:
+            pickle.dump(fig3, f)
+        plt.close(fig3)
+
+        # 2. residual_error plot
+        fig1 = plt.figure(figsize=(8, 5))
+        plt.plot(iterations, residual_error_append, marker='o', linestyle='-', color='tab:red')
+        plt.xlabel('Iterations')
+        plt.ylabel(r'$\frac{1}{2} \|\mathbf{z}-\mathbf{h}(\mathbf{\theta_0})-\mathbf{J_k}(\mathbf{\theta}-\mathbf{\theta_0})\|_{\mathbf{W_1}}^2$')
+        plt.title(r'Residual norm: $\frac{1}{2} \|\mathbf{z}-\mathbf{h}(\mathbf{\theta_0})-\mathbf{J_k}(\mathbf{\theta}-\mathbf{\theta_0})\|_{\mathbf{W_1}}^2$' + f'   (Vessels 2 and 3)')
+        plt.grid(True)
+        plt.tight_layout()
+
+        plot_path1 = os.path.join(plots_dir, f"2.Residual_norm")
+        plt.savefig(f"{plot_path1}.png", dpi=300)
+        plt.savefig(f"{plot_path1}.svg")
+        with open(f"{plot_path1}.pkl", "wb") as f:
+            pickle.dump(fig1, f)
+        plt.close(fig1)
+
+        # 3. solution_error plot
+        fig2 = plt.figure(figsize=(8, 5))
+        plt.plot(iterations, solution_error_append, marker='s', linestyle='-', color='tab:blue')
+        plt.xlabel('Iterations')
+        plt.ylabel(r'$\frac{1}{2} \beta^2 \|\mathbf{\theta}-\mathbf{\theta^*}\|_{\mathbf{W_2}}^2$')
+        plt.title(r'Solution norm: $\frac{1}{2}\beta^2 \|\mathbf{\theta}-\mathbf{\theta^*}\|_{\mathbf{W_2}}^2$' + f'   (Vessels 2 and 3)')
+        plt.grid(True)
+        plt.tight_layout()
+
+        plot_path2 = os.path.join(plots_dir, f"3.Solution_norm")
+        plt.savefig(f"{plot_path2}.png", dpi=300)
+        plt.savefig(f"{plot_path2}.svg")
+        with open(f"{plot_path2}.pkl", "wb") as f:
+            pickle.dump(fig2, f)
+        plt.close(fig2)
+
+        
+        # Confirmation in the terminal
+        print("Plots saved:")
+        print(f" - {plot_path1}.png, .svg, .pkl")
+        print(f" - {plot_path2}.png, .svg, .pkl")
+        print(f" - {plot_path3}.png, .svg, .pkl")
+
+
     def plot_iter(self, ID, vessel, delta_dict, knumber_max: int):
+            """Plots the parameters with delta ≠ 0 and their relative differences from the patient."""
+
+            plt.close('all')
+
+            file_template = 'Pk_{}.last'
+            plots_dir = os.path.join(openBF_dir, f"iteration_plots_ID={ID}")
+            os.makedirs(plots_dir, exist_ok=True)
+
+            patient_parameters = "Pm"
+            patient_yaml = self.patient_file
+            self.Pk(vessel, delta_dict, patient_parameters, patient_yaml)
+
+            file_name = file_template.format(vessel)
+            folders = ['P0'] + [f'optimized_parameters_P{i}' for i in range(1, knumber_max + 1)]
+
+            all_parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
+            param_labels = {
+                "h0": "Wall thickness (h0) [m]",
+                "L": "Length (L) [m]",
+                "R0": "Lumen radius (R0) [m]",
+                "Rp": "Proximal radius (Rp) [m]",
+                "Rd": "Distal radius (Rd) [m]",
+                "E": "Elastic modulus (E) [Pa]",
+                "R1": "First peripheral resistance (R1) " + r'$[Pa.s.m^{-3}]$',
+                "R2": "Second peripheral resistance (R2) " + r'$[Pa.s.m^{-3}]$',
+                "Cc": "Peripheral compliance (Cc) " + r'$[m^3.Pa^{-1}]$'       
+                }
+
+            valid_params = [p for p in all_parameters if delta_dict.get(p, 0) != 0]
+            param_data = {p: [] for p in valid_params}
+
+            for folder in folders:
+                file_path = os.path.join(self.openBF_dir, folder, file_name)
+                if not os.path.isfile(file_path):
+                    raise SystemExit(f"Error: File not found at {file_path}. Execution stopped.")
+
+                dados = np.loadtxt(file_path).flatten()
+                for i, p in enumerate(valid_params):
+                    param_data[p].append(dados[i])
+
+            patient_path = os.path.join(self.openBF_dir, patient_parameters, file_name)
+            if not os.path.isfile(patient_path):
+                raise SystemExit(f"Error: Patient file not found at {patient_path}. Execution stopped.")
+
+            patient_data = np.loadtxt(patient_path).flatten()
+            patient_ref = {p: patient_data[i] for i, p in enumerate(valid_params)}
+
+            iterations = np.arange(len(folders))
+
+            # Plots relative differences (all together)
+            fig2, ax2 = plt.subplots(figsize=(10, 6))
+            for p in valid_params:
+                vals = np.array(param_data[p])
+                ref = patient_ref[p]
+                diff = np.abs(((vals - ref) / ref) * 100)
+                ax2.plot(iterations, diff, marker='o', label=param_labels.get(p, p))
+            ax2.axhline(0, color='gray', linestyle='--', linewidth=1)
+            ax2.set_title(f'Absolute Relative Difference of Parameters (%)  ({vessel})', fontsize=14)
+            ax2.set_xlabel('Iterations', fontsize=14)
+            ax2.set_ylabel(r'$\left|\frac{\mathbf{\theta_0} - \mathbf{\theta_z}}{\mathbf{\theta_z}}\right| \times 100 \,\%$', fontsize=14)
+            ax2.grid(True)
+            ax2.legend()
+            fig2.tight_layout()
+            rel_diff_path = os.path.join(plots_dir, f"4.Relative_difference")
+            fig2.savefig(f"{rel_diff_path}.png", dpi=300)
+            fig2.savefig(f"{rel_diff_path}.svg")
+            with open(f"{rel_diff_path}.pkl", "wb") as f:
+                pickle.dump(fig2, f)
+            plt.close(fig2)
+            print(f"Saved: {rel_diff_path}.png, .svg, .pkl")
+
+            # Plots absolute values for each valid parameter
+            for p in valid_params:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                y = np.array(param_data[p])
+                ref = patient_ref[p]
+                label = param_labels.get(p, p)
+
+                # Plots parameter evolution
+                ax.plot(iterations, y, 'o-', label = f'Estimated {p} - ' + r'$(\mathbf{\theta_0})$')
+                # Patient line
+                ax.axhline(ref, linestyle='--', linewidth=2,
+                        color=ax.lines[-1].get_color(),
+                        label=f'Patient {p} - ' + r'$(\mathbf{\theta_z})$')
+
+                ax.set_title(f'{label} vs Iterations   ({vessel})', fontsize=14)
+                ax.set_xlabel('Iterations', fontsize=14)
+                ax.set_ylabel(label, fontsize=14)
+                ax.grid(True)
+                ax.legend()
+                fig.tight_layout()
+
+                # Saves the plot
+                plot_path = os.path.join(plots_dir, f"5.Absolute_{p}_values")
+                fig.savefig(f"{plot_path}.png", dpi=300)
+                fig.savefig(f"{plot_path}.svg")
+                with open(f"{plot_path}.pkl", "wb") as f:
+                    pickle.dump(fig, f)
+                plt.close(fig)
+                print(f"Saved: {plot_path}.png, .svg, .pkl")
+
+
+    def tied_plot_iter(self, ID, delta_dict, knumber_max: int):
         """Plots the parameters with delta ≠ 0 and their relative differences from the patient."""
 
         plt.close('all')
@@ -1243,9 +1497,11 @@ class OPENBF_Jacobian:
 
         patient_parameters = "Pm"
         patient_yaml = self.patient_file
-        self.Pk(vessel, delta_dict, patient_parameters, patient_yaml)
+        # Using vessel 2, since the parameters of vessels 2 and 3 are the same
+        self.Pk("vessel2", delta_dict, patient_parameters, patient_yaml) 
 
-        file_name = file_template.format(vessel)
+        # Using vessel 2, since the parameters of vessels 2 and 3 are the same
+        file_name = file_template.format("vessels2and3")
         folders = ['P0'] + [f'optimized_parameters_P{i}' for i in range(1, knumber_max + 1)]
 
         all_parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
@@ -1265,6 +1521,11 @@ class OPENBF_Jacobian:
         param_data = {p: [] for p in valid_params}
 
         for folder in folders:
+            if folder == 'P0':
+                file_name = file_template.format("vessel2")   # P0 usa apenas vessel2
+            else:
+                file_name = file_template.format("vessels2and3")  # otimizados usam vessels2and3
+
             file_path = os.path.join(self.openBF_dir, folder, file_name)
             if not os.path.isfile(file_path):
                 raise SystemExit(f"Error: File not found at {file_path}. Execution stopped.")
@@ -1273,7 +1534,9 @@ class OPENBF_Jacobian:
             for i, p in enumerate(valid_params):
                 param_data[p].append(dados[i])
 
-        patient_path = os.path.join(self.openBF_dir, patient_parameters, file_name)
+        patient_file = file_template.format("vessel2")
+        patient_path = os.path.join(self.openBF_dir, patient_parameters, patient_file)
+
         if not os.path.isfile(patient_path):
             raise SystemExit(f"Error: Patient file not found at {patient_path}. Execution stopped.")
 
@@ -1290,7 +1553,7 @@ class OPENBF_Jacobian:
             diff = np.abs(((vals - ref) / ref) * 100)
             ax2.plot(iterations, diff, marker='o', label=param_labels.get(p, p))
         ax2.axhline(0, color='gray', linestyle='--', linewidth=1)
-        ax2.set_title(f'Absolute Relative Difference of Parameters (%)  ({vessel})', fontsize=14)
+        ax2.set_title(f'Absolute Relative Difference of Parameters (%)  (Vessels 2 and 3)', fontsize=14)
         ax2.set_xlabel('Iterations', fontsize=14)
         ax2.set_ylabel(r'$\left|\frac{\mathbf{\theta_0} - \mathbf{\theta_z}}{\mathbf{\theta_z}}\right| \times 100 \,\%$', fontsize=14)
         ax2.grid(True)
@@ -1318,7 +1581,7 @@ class OPENBF_Jacobian:
                        color=ax.lines[-1].get_color(),
                        label=f'Patient {p} - ' + r'$(\mathbf{\theta_z})$')
 
-            ax.set_title(f'{label} vs Iterations   ({vessel})', fontsize=14)
+            ax.set_title(f'{label} vs Iterations   (Vessels 2 and 3)', fontsize=14)
             ax.set_xlabel('Iterations', fontsize=14)
             ax.set_ylabel(label, fontsize=14)
             ax.grid(True)
@@ -2265,12 +2528,11 @@ class OPENBF_Jacobian:
                 for knumber in range(0, knumber_max + 1):
                     self.tied_iteration(ID, knumber, beta_method, alpha, delta_dict)
 
-                for vessel_plot in vessels:
-                    # Plots error for k from 0 to knumber_max
-                    self.plot_error(ID, vessel_plot, beta_method, knumber_max)
+                # Plots error for k from 0 to knumber_max
+                self.tied_plot_error(ID, beta_method, knumber_max)
 
-                    # Plots the parameters evolution 
-                    self.plot_iter(ID, vessel_plot, delta_dict, knumber_max)
+                # Plots the parameters evolution 
+                self.tied_plot_iter(ID, delta_dict, knumber_max)
 
             else:
                 raise SystemExit(f"Error: Tied iteration requires that the only valid parameters be R1 and Cc. Execution stopped.")
