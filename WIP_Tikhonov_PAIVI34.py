@@ -395,58 +395,60 @@ class OPENBF_Jacobian:
             np.savetxt(output_file, stacked_matrix, fmt="%.14e")
             print(f"Stacked matrix saved in: {output_file}")
 
-
     def tied_stack_partial_derivatives(self, knumber, delta_dict, output_path):
         """
         Vertically stacks the 4th column of the partial derivative matrices for each vessel;
-        Horizontally stacks only the 4th column of the partial derivative matrices for each parameter.
-
+        Horizontally stacks the columns for each parameter.
+        Result: shape (400, n_parameters)
         """
         vessels = ["vessel2", "vessel3"]
         parameters = ["R1", "Cc"]
 
-        # Filters parameters with delta != 0
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
-
-        for param in parameters:
-            if delta_dict[param] == 0:
-                print(
-                    f"Warning: Variation of the parameter '{param}' is zero. It will be excluded from the Jacobian matrix.")
 
         if not os.path.exists(output_path):
             os.makedirs(output_path)
 
         # List to save the Jacobian columns
-            jacobian_columns = []
+        jacobian_columns = []
 
-            # For each parameter, stack the derivatives of the vessels
-            for param in valid_parameters:
-                col_blocks = []
-                delta = delta_dict[param]
+        # For each parameter, stack the derivatives of the vessels
+        for param in valid_parameters:
+            col_blocks = []
+            delta = delta_dict[param]
 
-                for vessel in vessels:
-                    file_path = os.path.join(
-                        openBF_dir, "partial_deriv_WK",
-                        f"{vessel}_del_{param}_delta={delta:.0e}.last"
-                    )
+            for vessel in vessels:
+                file_path = os.path.join(
+                    openBF_dir, "partial_deriv_WK",
+                    f"{vessel}_del_{param}_delta={delta:.0e}.last"
+                )
 
-                    if not os.path.exists(file_path):
-                        raise SystemExit(f"Error: File not found - {file_path}")
+                if not os.path.exists(file_path):
+                    raise SystemExit(f"Error: File not found - {file_path}")
 
-                    matrix = np.loadtxt(file_path)
-                    fourth_column = matrix[:, 3].reshape(-1, 1)
-                    col_blocks.append(fourth_column)
+                del_data = np.loadtxt(file_path)
 
-                # Stacks the vessels vertically to form the Jacobian matrix column
-                jacobian_column = np.vstack(col_blocks)
-                jacobian_columns.append(jacobian_column)
+                # If matrix shape is (200,1), it becomes (200,)
+                if del_data.ndim == 2 and del_data.shape[1] == 1:
+                    del_data = del_data.reshape(-1)
+                # If matrix shape is (200,n), it takes only the 4th column
+                elif del_data.ndim == 2 and del_data.shape[1] > 1:
+                    del_data = del_data[:, 3]
 
-            # Horizontally stacks all the columns to form the complete Jacobian matrix
-            if jacobian_columns:
-                J = np.hstack(jacobian_columns)
-                output_file = os.path.join(output_path, f"jacobian_k={knumber}_vessels2and3.txt")
-                np.savetxt(output_file, J, fmt="%.14e")
-                print(f"Jacobian matrix saved in: {output_file}")
+                col_blocks.append(del_data)
+
+            # Concatenates the vessels data vertically to form the Jacobian matrix column
+            jacobian_column = np.concatenate(col_blocks)
+            jacobian_columns.append(jacobian_column)
+
+        # Horizontally stacks all the columns to form the complete Jacobian matrix
+        J = np.column_stack(jacobian_columns)  # (400, number of parameters)
+
+        # Saves the Jacobian matrix
+        output_file = os.path.join(output_path, f"jacobian_k={knumber}_vessels2and3.txt")
+        np.savetxt(output_file, J, fmt="%.14e")
+        print(f"Jacobian matrix saved in: {output_file}")
+        print(f"Jacobian shape = {J.shape}")
 
 
     def A_matrix(self, ID, beta_opt, vessel, knumber):
