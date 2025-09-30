@@ -481,10 +481,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Regularizing the solution of the LS-problem
             JkT_W1_Jk = Jk.T @ W1 @ Jk # Jacobian transpose times the Jacobian with W1 matrix
@@ -533,10 +533,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Regularizing the solution of the LS-problem
             JkT_W1_Jk = Jk.T @ W1 @ Jk # Jacobian transpose times the Jacobian with W1 matrix
@@ -605,10 +605,10 @@ class OPENBF_Jacobian:
 
         # Tikhonov Regularization matrices
         z = yk_data
-        W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
+        W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
         P = k0_param_data
-        W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
+        W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
         
         # Creates the regularized B matriz
         B = Jk.T @ W1 @ R_matrix - beta_opt**2 * W2 @ (k_param_data - kstar_data)
@@ -674,10 +674,10 @@ class OPENBF_Jacobian:
 
         # Tikhonov Regularization matrices
         z = yk_data
-        W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
+        W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
         P = k0_param_data
-        W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
+        W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
         
         # Creates the regularized B matriz
         B = Jk.T @ W1 @ R_matrix - beta_opt**2 * W2 @ (k_param_data - kstar_data)
@@ -1138,10 +1138,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Calculates the residual norm
             res = patient_data - yk_data - Jk_data @ deltaP_matrix
@@ -1292,10 +1292,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Calculates the residual norm
             res = patient_data - yk_data - Jk_data @ deltaP_matrix
@@ -1739,10 +1739,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Creates the A matrix
             A = Jk_data.T @ W1 @ Jk_data + beta**2 * W2
@@ -1904,10 +1904,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Creates the A matrix
             A = Jk_data.T @ W1 @ Jk_data + beta**2 * W2
@@ -2084,10 +2084,10 @@ class OPENBF_Jacobian:
 
         # Tikhonov Regularization matrices
         z = yk_data
-        W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
+        W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
         P = k0_data
-        W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
+        W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
         for beta in beta_values:
 
@@ -2236,10 +2236,10 @@ class OPENBF_Jacobian:
 
         # Tikhonov Regularization matrices
         z = yk_data
-        W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
+        W1 = np.diag(1 / np.abs(z**2)) # Weighting matrix
 
         P = k0_data
-        W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
+        W2 = np.diag(1 / np.abs(P**2)) # W2=L2.T@L2, L2 = Regularization matrix
 
         for beta in beta_values:
 
@@ -2535,6 +2535,11 @@ class OPENBF_Jacobian:
                 raise SystemExit(f"Error: Tied iteration requires that the only valid parameters be R1 and Cc. Execution stopped.")
             
         else:
+
+            # For the user's knowledge
+            if measured_vessels != "NA":
+                raise SystemExit(f"Error: 'measured_vessels' equals 'vessel' when tied_iteration=False. Use 'NA' for clarity.")
+
             # Adds noise to patient output file 
             self.add_noise(vessel)
 
@@ -2558,11 +2563,11 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v1"
-    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v1/circle_of_willis_inlet.dat"
-    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v1/inverse_problem_Patient.yaml"
-    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v1/inverse_problem_k=0_fixed_vessel_1.yaml"
-    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v1/P_star_vessels2and3.txt"
+    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v2v3"
+    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v2v3/circle_of_willis_inlet.dat"
+    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v2v3/inverse_problem_Patient.yaml"
+    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v2v3/inverse_problem_k=0_fixed_vessel_1.yaml"
+    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v2v3/P_star_vessels2and3.txt"
 
     updater = OPENBF_Jacobian(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
@@ -2572,5 +2577,5 @@ if __name__ == "__main__":
     # Searches optimized parameters
     #add_values = {"h0": 0.00001, "L": 0.01, "R0": 0.0001, "Rp": 0, "Rd": 0, "E": 0, "R1": 0, "R2": 0, "Cc": 0}
     add_values = {"h0": 0, "L": 0, "R0": 0, "Rp": 0, "Rd": 0, "E": 0, "R1": 1e6, "R2": 0, "Cc": 1e-13}
-    measured_vessels = ["vessel1"]
-    updater.search_opt(25, "NA", "Morozov", 0.3, add_values, measured_vessels, 20, tied_iteration=True)
+    measured_vessels = ["vessel2","vessel3"]
+    updater.search_opt(24, "NA", "Morozov", 0.3, add_values, measured_vessels, 20, tied_iteration=True)
