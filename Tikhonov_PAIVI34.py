@@ -46,7 +46,7 @@ class OPENBF_Jacobian:
         patient_output = os.path.join(openBF_dir, "ym_openBF_patient_output", f"{vessel}_stacked.last")
         if not os.path.exists(patient_output):
             raise SystemExit(f"Error: Patient output file not found - {patient_output}")
-        patient_data = np.loadtxt(patient_output, comments="#")[:, 3] # Only takes the 3rd knot
+        patient_data = np.loadtxt(patient_output, comments="#")
 
         # Standard deviations 
         pressure_std = 266.64 # Pressure standard deviation [Pa]
@@ -146,7 +146,7 @@ class OPENBF_Jacobian:
         print(f"Updated file saved in: {updated_file}")
 
 
-    def update_yaml_tied(self, knumber, parameter, add_value):
+    def tied_update_yaml(self, knumber, parameter, add_value):
         """ 
         Simultaneously updates the parameter (e.g., R1 or Cc) in vessels 2 and 3.
         """
@@ -395,13 +395,13 @@ class OPENBF_Jacobian:
             np.savetxt(output_file, stacked_matrix, fmt="%.14e")
             print(f"Stacked matrix saved in: {output_file}")
 
-    def tied_stack_partial_derivatives(self, knumber, delta_dict, output_path):
+    def tied_stack_partial_derivatives(self, knumber, delta_dict, measured_vessels, output_path):
         """
         Vertically stacks the 4th column of the partial derivative matrices for each vessel;
         Horizontally stacks the columns for each parameter.
         Result: shape (400, n_parameters)
         """
-        vessels = ["vessel2", "vessel3"]
+        vessels = measured_vessels 
         parameters = ["R1", "Cc"]
 
         valid_parameters = [param for param in parameters if delta_dict[param] != 0]
@@ -481,10 +481,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / (z**2)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Regularizing the solution of the LS-problem
             JkT_W1_Jk = Jk.T @ W1 @ Jk # Jacobian transpose times the Jacobian with W1 matrix
@@ -514,7 +514,7 @@ class OPENBF_Jacobian:
                 Jk = Jk.reshape(-1, 1)
 
             # Required files paths
-            yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"vessels2and3_stacked.last")
+            yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"measured_vessels_stacked.last")
             k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_vessel2.last") 
             
             # Checks if files exist
@@ -533,10 +533,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / (z**2)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Regularizing the solution of the LS-problem
             JkT_W1_Jk = Jk.T @ W1 @ Jk # Jacobian transpose times the Jacobian with W1 matrix
@@ -605,10 +605,10 @@ class OPENBF_Jacobian:
 
         # Tikhonov Regularization matrices
         z = yk_data
-        W1 = np.diag(1 / (z**2)) # Weighting matrix
+        W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
 
         P = k0_param_data
-        W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+        W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
         
         # Creates the regularized B matriz
         B = Jk.T @ W1 @ R_matrix - beta_opt**2 * W2 @ (k_param_data - kstar_data)
@@ -633,13 +633,13 @@ class OPENBF_Jacobian:
             raise SystemExit(f"Error: Jacobian matrix file not found - {file_path}")
 
         # Loads the data from the stacked patient openBF output 
-        patient_output = os.path.join(openBF_dir, "ym_openBF_patient_output", f"vessels2and3_withnoise_stacked.last")
+        patient_output = os.path.join(openBF_dir, "ym_openBF_patient_output", f"measured_vessels_withnoise_stacked.last")
         if not os.path.exists(patient_output):
             raise SystemExit(f"Error: Patient output file not found - {patient_output}")
         patient_data = np.loadtxt(patient_output, comments="#")
 
         # Loads the stacked simulation output
-        yk_output = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"vessels2and3_stacked.last")
+        yk_output = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"measured_vessels_stacked.last")
         if not os.path.exists(yk_output):
             raise SystemExit(f"Error: Output file for iteration {knumber} not found - {yk_output}")
         yk_data = np.loadtxt(yk_output, comments="#")
@@ -674,10 +674,10 @@ class OPENBF_Jacobian:
 
         # Tikhonov Regularization matrices
         z = yk_data
-        W1 = np.diag(1 / (z**2)) # Weighting matrix
+        W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
 
         P = k0_param_data
-        W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+        W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
         
         # Creates the regularized B matriz
         B = Jk.T @ W1 @ R_matrix - beta_opt**2 * W2 @ (k_param_data - kstar_data)
@@ -1125,7 +1125,7 @@ class OPENBF_Jacobian:
             yk_data = np.loadtxt(yk_file, comments="#")[:, 3] # Takes only the 4ª column
             Jk_data = np.loadtxt(Jk_file, comments="#")
             kplus_data = np.loadtxt(kplus_param_file, comments="#")
-            k0_data = np.loadtxt(k0_param_file, comments="#") # verificar se apago
+            k0_data = np.loadtxt(k0_param_file, comments="#") 
             k_data = np.loadtxt(k_param_file, comments="#")
             kstar_data = np.loadtxt(kstar_param_file, comments="#")
 
@@ -1138,10 +1138,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / (z**2)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Calculates the residual norm
             res = patient_data - yk_data - Jk_data @ deltaP_matrix
@@ -1232,21 +1232,23 @@ class OPENBF_Jacobian:
         print(f" - {plot_path3}.png, .svg, .pkl")
 
 
-    def tied_plot_error(self, ID, beta_method, knumber_max):
+    def tied_plot_error(self, ID, beta_method, measured_vessels, knumber_max):
         # Plots the total error vs. iteration
 
         plt.close('all')
         residual_error_append = []
         solution_error_append = []
-        
+
+        # Generates measured vessels labels for graph titles
+        vessels_label = " and ".join([v.replace("vessel", "Vessel ") for v in measured_vessels])
 
         for knumber in range(0, knumber_max + 1):
 
             kplus = knumber + 1
 
             # Files paths
-            patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"vessels2and3_withnoise_stacked.last")
-            yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"vessels2and3_stacked.last")
+            patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"measured_vessels_withnoise_stacked.last")
+            yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"measured_vessels_stacked.last")
             Jk_file = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_vessels2and3.txt")
             kplus_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{kplus}", f"Pk_vessels2and3.last")
             k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_vessel2.last")
@@ -1277,7 +1279,7 @@ class OPENBF_Jacobian:
             yk_data = np.loadtxt(yk_file, comments="#")
             Jk_data = np.loadtxt(Jk_file, comments="#")
             kplus_data = np.loadtxt(kplus_param_file, comments="#")
-            k0_data = np.loadtxt(k0_param_file, comments="#") # verificar se apago
+            k0_data = np.loadtxt(k0_param_file, comments="#") 
             k_data = np.loadtxt(k_param_file, comments="#")
             kstar_data = np.loadtxt(kstar_param_file, comments="#")
 
@@ -1290,10 +1292,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / (z**2)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Calculates the residual norm
             res = patient_data - yk_data - Jk_data @ deltaP_matrix
@@ -1332,7 +1334,7 @@ class OPENBF_Jacobian:
         plt.plot(iterations, total_error_append, marker='^', linestyle='-', color='tab:green')
         plt.xlabel('Iterations')
         plt.ylabel(r'$F = \frac{1}{2} [\|\mathbf{z}-\mathbf{h}(\mathbf{\theta_0})-\mathbf{J_k}(\mathbf{\theta}-\mathbf{\theta_0})\|_{\mathbf{W_1}}^2 + \beta^2 \|\mathbf{\theta}-\mathbf{\theta^*}\|_{\mathbf{W_2}}^2]$')
-        plt.title(r'Functional: $F = \frac{1}{2} [\|\mathbf{z}-\mathbf{h}(\mathbf{\theta_0})-\mathbf{J_k}(\mathbf{\theta}-\mathbf{\theta_0})\|_{\mathbf{W_1}}^2 + \beta^2 \|\mathbf{\theta}-\mathbf{\theta^*}\|_{\mathbf{W_2}}^2]$' + f'   (Vessels 2 and 3)')
+        plt.title(r'Functional: $F = \frac{1}{2} [\|\mathbf{z}-\mathbf{h}(\mathbf{\theta_0})-\mathbf{J_k}(\mathbf{\theta}-\mathbf{\theta_0})\|_{\mathbf{W_1}}^2 + \beta^2 \|\mathbf{\theta}-\mathbf{\theta^*}\|_{\mathbf{W_2}}^2]$' + f'   ({vessels_label})')
         plt.grid(True)
         plt.tight_layout()
 
@@ -1348,7 +1350,7 @@ class OPENBF_Jacobian:
         plt.plot(iterations, residual_error_append, marker='o', linestyle='-', color='tab:red')
         plt.xlabel('Iterations')
         plt.ylabel(r'$\frac{1}{2} \|\mathbf{z}-\mathbf{h}(\mathbf{\theta_0})-\mathbf{J_k}(\mathbf{\theta}-\mathbf{\theta_0})\|_{\mathbf{W_1}}^2$')
-        plt.title(r'Residual norm: $\frac{1}{2} \|\mathbf{z}-\mathbf{h}(\mathbf{\theta_0})-\mathbf{J_k}(\mathbf{\theta}-\mathbf{\theta_0})\|_{\mathbf{W_1}}^2$' + f'   (Vessels 2 and 3)')
+        plt.title(r'Residual norm: $\frac{1}{2} \|\mathbf{z}-\mathbf{h}(\mathbf{\theta_0})-\mathbf{J_k}(\mathbf{\theta}-\mathbf{\theta_0})\|_{\mathbf{W_1}}^2$' + f'   ({vessels_label})')
         plt.grid(True)
         plt.tight_layout()
 
@@ -1364,7 +1366,7 @@ class OPENBF_Jacobian:
         plt.plot(iterations, solution_error_append, marker='s', linestyle='-', color='tab:blue')
         plt.xlabel('Iterations')
         plt.ylabel(r'$\frac{1}{2} \beta^2 \|\mathbf{\theta}-\mathbf{\theta^*}\|_{\mathbf{W_2}}^2$')
-        plt.title(r'Solution norm: $\frac{1}{2}\beta^2 \|\mathbf{\theta}-\mathbf{\theta^*}\|_{\mathbf{W_2}}^2$' + f'   (Vessels 2 and 3)')
+        plt.title(r'Solution norm: $\frac{1}{2}\beta^2 \|\mathbf{\theta}-\mathbf{\theta^*}\|_{\mathbf{W_2}}^2$' + f'   ({vessels_label})')
         plt.grid(True)
         plt.tight_layout()
 
@@ -1643,7 +1645,7 @@ class OPENBF_Jacobian:
         # Calculates and creates the partial derivatives files
         self.partial_deriv_files(vessel, base_dir, updated_dir, del_dir, parameter)
 
-    def tied_updated_openBF(self, knumber, parameter, add_value):
+    def tied_updated_openBF(self, knumber, parameter, add_value, measured_vessels):
         """ Updates the value of a parameter for both vessels 2 and 3;
         runs openBF in Julia for the updated YAML;
         stacks the output values;
@@ -1654,29 +1656,25 @@ class OPENBF_Jacobian:
         # Updates the YAML file to the specified parameter
         for parameter in parameters:
             delta_value = add_value[parameter]
-            self.update_yaml_tied(knumber, parameter, delta_value)
+            self.tied_update_yaml(knumber, parameter, delta_value)
 
-        # Where the k_file output files are
-        base_dir = os.path.join(openBF_dir, f"y{knumber}_openBF_output")
-        os.makedirs(base_dir, exist_ok=True)
+            # Where the updated_file output files will be
+            updated_dir = os.path.join(openBF_dir, f"openBF_updated_WK_{parameter}")
+            os.makedirs(updated_dir, exist_ok=True)
 
-        # Where the updated_file output files will be
-        updated_dir = os.path.join(openBF_dir, f"openBF_updated_WK")
-        os.makedirs(updated_dir, exist_ok=True)
+            # Runs openBF to updated_file and stacks the openBF output
+            updated_file = os.path.join(openBF_dir, f"updated_WK_{parameter}.yaml")
+            self.file_openBF(updated_file,updated_dir)
 
-        # Runs openBF to updated_file and stacks the openBF output
-        updated_file = os.path.join(openBF_dir, f"updated_WK_{parameter}.yaml")
-        self.file_openBF(updated_file,updated_dir)
+            # Saves partial derivatives in a folder
+            del_dir = os.path.join(openBF_dir, f"partial_deriv_WK")
+            os.makedirs(del_dir, exist_ok=True)
 
-        # Path to the partial derivatives directory
-        del_dir = os.path.join(openBF_dir, f"partial_deriv_WK")
+            # Where the k_file output files are
+            base_dir = os.path.join(openBF_dir, f"y{knumber}_openBF_output")
+            os.makedirs(base_dir, exist_ok=True)
 
-        # Calculates and creates the partial derivatives files
-        vessels = ["vessel2", "vessel3"]
-        parameters = ["R1", "Cc"]
-        for vessel in vessels:
-            for parameter in parameters:
-                delta_value = add_value[parameter]
+            for vessel in measured_vessels:
                 self.tied_partial_deriv_files(vessel, base_dir, updated_dir, del_dir, parameter, delta_value)
 
 
@@ -1741,10 +1739,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / (z**2)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Creates the A matrix
             A = Jk_data.T @ W1 @ Jk_data + beta**2 * W2
@@ -1858,8 +1856,8 @@ class OPENBF_Jacobian:
         kplus = knumber + 1
 
         # Files paths
-        patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"vessels2and3_withnoise_stacked.last")
-        yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"vessels2and3_stacked.last")
+        patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"measured_vessels_withnoise_stacked.last")
+        yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"measured_vessels_stacked.last")
         Jk_file = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_vessels2and3.txt")
         k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_vessel2.last")
         kplus_param_file = os.path.join(openBF_dir, f"optimized_parameters_P{kplus}", f"Pk_vessels2and3.last")
@@ -1906,10 +1904,10 @@ class OPENBF_Jacobian:
 
             # Tikhonov Regularization matrices
             z = yk_data
-            W1 = np.diag(1 / (z**2)) # Weighting matrix
+            W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
 
             P = k0_data
-            W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+            W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
 
             # Creates the A matrix
             A = Jk_data.T @ W1 @ Jk_data + beta**2 * W2
@@ -2086,10 +2084,10 @@ class OPENBF_Jacobian:
 
         # Tikhonov Regularization matrices
         z = yk_data
-        W1 = np.diag(1 / (z**2)) # Weighting matrix
+        W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
 
         P = k0_data
-        W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+        W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
 
         for beta in beta_values:
 
@@ -2170,9 +2168,9 @@ class OPENBF_Jacobian:
         discrepancy = []
 
         # Files paths
-        patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"vessels2and3_withnoise_stacked.last")
-        patient_file_withoutnoise = os.path.join(openBF_dir, "ym_openBF_patient_output", f"vessels2and3_stacked.last")
-        yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"vessels2and3_stacked.last")
+        patient_file = os.path.join(openBF_dir, "ym_openBF_patient_output", f"measured_vessels_withnoise_stacked.last")
+        patient_file_withoutnoise = os.path.join(openBF_dir, "ym_openBF_patient_output", f"measured_vessels_withoutnoise_stacked.last")
+        yk_file = os.path.join(openBF_dir, f"y{knumber}_openBF_output", f"measured_vessels_stacked.last")
         Jk_file = os.path.join(openBF_dir, f"jacobians", f"jacobian_k={knumber}_vessels2and3.txt")
         k0_param_file = os.path.join(openBF_dir, "P0", f"Pk_vessel2.last")
         if knumber == 0:
@@ -2238,10 +2236,10 @@ class OPENBF_Jacobian:
 
         # Tikhonov Regularization matrices
         z = yk_data
-        W1 = np.diag(1 / (z**2)) # Weighting matrix
+        W1 = np.diag(1 / np.abs(z**4)) # Weighting matrix
 
         P = k0_data
-        W2 = np.diag(1 / (P**2)) # W2=L2.T@L2, L2 = Regularization matrix
+        W2 = np.diag(1 / np.abs(P**4)) # W2=L2.T@L2, L2 = Regularization matrix
 
         for beta in beta_values:
 
@@ -2393,7 +2391,7 @@ class OPENBF_Jacobian:
         self.file_openBF(opt_output_yaml_path, f"y{knumber+1}_openBF_output")
 
     
-    def tied_iteration(self, ID, knumber, beta_method, alpha, delta_dict):
+    def tied_iteration(self, ID, knumber, beta_method, alpha, delta_dict, measured_vessels):
         """Runs an iteration to obtain the optimized parameters P(k+1) for R1 and Cc. Updates vessels 2 and 3 simultaneously with the same value."""
 
         print(f"\n=== Starting iteration {knumber}, ID: {ID} ===\n")
@@ -2421,11 +2419,11 @@ class OPENBF_Jacobian:
 
         # Updates R1 and Cc in vessels 2 and 3 and calculates their partial derivatives
         for parameter in valid_parameters:
-            self.tied_updated_openBF(knumber, parameter, delta_dict)
+            self.tied_updated_openBF(knumber, parameter, delta_dict, measured_vessels)
 
         # Creates the Jacobian matrix
         output_path = os.path.join(openBF_dir, f"jacobians")
-        self.tied_stack_partial_derivatives(knumber, delta_dict, output_path)
+        self.tied_stack_partial_derivatives(knumber, delta_dict, measured_vessels, output_path)
 
         # Creates the P0 matrix (parameters of the k-iteration yaml)
         if knumber == 0:
@@ -2437,24 +2435,23 @@ class OPENBF_Jacobian:
             for vessel_P0 in vessels:
                 self.Pk(vessel_P0, delta_dict, param_directory, yaml_file)
 
-        # Stacks patient openBF output from vessels 2 and 3 (without noise)
-        files= ["vessel2_stacked.last", "vessel3_stacked.last"]
+        # Stacks patient openBF output from the measured vessels (without noise)
+        files = [f"{v}_stacked.last" for v in measured_vessels]
         file_dir = os.path.join(openBF_dir, "ym_openBF_patient_output")
         
-        self.stack_last_files(files, file_dir, "vessels2and3")
+        self.stack_last_files(files, file_dir, "measured_vessels_withoutnoise")
 
-        # Stacks patient openBF output from vessels 2 and 3 (with noise)
-        files= ["vessel2_withnoise.last", "vessel3_withnoise.last"]
+        # Stacks patient openBF output from the measured vessels (with noise)
+        files = [f"{v}_withnoise.last" for v in measured_vessels]
         file_dir = os.path.join(openBF_dir, "ym_openBF_patient_output")
         
-        self.stack_last_files(files, file_dir, "vessels2and3_withnoise")
+        self.stack_last_files(files, file_dir, "measured_vessels_withnoise")
 
-        # Stacks simulation output from vessels 2 and 3
-        files= ["vessel2_stacked.last", "vessel3_stacked.last"]
+        # Stacks simulation output from the measured vessels
+        files = [f"{v}_stacked.last" for v in measured_vessels]
         file_dir = os.path.join(openBF_dir, f"y{knumber}_openBF_output")
         
-        self.stack_last_files(files, file_dir, "vessels2and3")
-
+        self.stack_last_files(files, file_dir, "measured_vessels")
 
         if beta_method == "L_curve":
             # Calculates the optimized parameters with a initial guess for beta
@@ -2500,7 +2497,7 @@ class OPENBF_Jacobian:
         self.file_openBF(opt_output_yaml_path, f"y{knumber+1}_openBF_output")
 
 
-    def search_opt(self, ID, vessel, beta_method, alpha, delta_dict, knumber_max, tied_iteration=False):
+    def search_opt(self, ID, vessel, beta_method, alpha, delta_dict, measured_vessels, knumber_max, tied_iteration=False):
 
         # Filters parameters with delta != 0
         parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
@@ -2518,7 +2515,7 @@ class OPENBF_Jacobian:
             # Checks if only R1 and Cc are valid parameters
             if valid_parameters == ["R1","Cc"]:
 
-                vessels = ["vessel2", "vessel3"]
+                vessels = measured_vessels 
 
                 # Adds noise to patient output files
                 for vessel_noise in vessels: 
@@ -2526,10 +2523,10 @@ class OPENBF_Jacobian:
 
                 # Begins iteration with R1 and Cc of vessels 2 and 3 tied
                 for knumber in range(0, knumber_max + 1):
-                    self.tied_iteration(ID, knumber, beta_method, alpha, delta_dict)
+                    self.tied_iteration(ID, knumber, beta_method, alpha, delta_dict, measured_vessels)
 
                 # Plots error for k from 0 to knumber_max
-                self.tied_plot_error(ID, beta_method, knumber_max)
+                self.tied_plot_error(ID, beta_method, measured_vessels, knumber_max)
 
                 # Plots the parameters evolution 
                 self.tied_plot_iter(ID, delta_dict, knumber_max)
@@ -2561,18 +2558,19 @@ class OPENBF_Jacobian:
 # Application
 if __name__ == "__main__":
 
-    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK"
-    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK/circle_of_willis_inlet.dat"
-    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK/inverse_problem_Patient.yaml"
-    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK/inverse_problem_k=0_fixed_vessel_1.yaml"
-    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK/P_star_vessels2and3.txt"
+    openBF_dir = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v1"
+    inlet_dat = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v1/circle_of_willis_inlet.dat"
+    patient_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v1/inverse_problem_Patient.yaml"
+    k0_yaml = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v1/inverse_problem_k=0_fixed_vessel_1.yaml"
+    kstar_txt = "C:/Users/Reinaldo/Documents/inverse_problem_results_WK_v1/P_star_vessels2and3.txt"
 
     updater = OPENBF_Jacobian(openBF_dir, inlet_dat, patient_yaml, k0_yaml, kstar_txt)
 
     # Runs openBF to patient file
-    # updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
+    updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
 
     # Searches optimized parameters
     #add_values = {"h0": 0.00001, "L": 0.01, "R0": 0.0001, "Rp": 0, "Rd": 0, "E": 0, "R1": 0, "R2": 0, "Cc": 0}
     add_values = {"h0": 0, "L": 0, "R0": 0, "Rp": 0, "Rd": 0, "E": 0, "R1": 1e6, "R2": 0, "Cc": 1e-13}
-    updater.search_opt(24, "NA", "Morozov", 0.3, add_values, 20, tied_iteration=True)
+    measured_vessels = ["vessel1"]
+    updater.search_opt(25, "NA", "Morozov", 0.3, add_values, measured_vessels, 20, tied_iteration=True)
