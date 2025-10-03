@@ -364,8 +364,8 @@ class OPENBF_Jacobian:
         """
         parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
 
-        # Filters parameters with delta != 0
-        valid_parameters = [param for param in parameters if delta_dict[param] != 0]
+        # Filters parameters with delta != "NaN"
+        valid_parameters = [param for param in parameters if delta_dict[param] != "NaN"]
 
         for param in parameters:
             if delta_dict[param] == 0:
@@ -404,7 +404,7 @@ class OPENBF_Jacobian:
         vessels = measured_vessels 
         parameters = ["R1", "Cc"]
 
-        valid_parameters = [param for param in parameters if delta_dict[param] != 0]
+        valid_parameters = [param for param in parameters if delta_dict[param] != "NaN"]
 
         if not os.path.exists(output_path):
             os.makedirs(output_path)
@@ -700,8 +700,8 @@ class OPENBF_Jacobian:
         # Creates a vector with the parameter values corresponding to the guess
         parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
 
-        # Filters parameters with delta != 0
-        valid_parameters = [param for param in parameters if delta_dict[param] != 0]
+        # Filters parameters with delta != "NaN"
+        valid_parameters = [param for param in parameters if delta_dict[param] != "NaN"]
 
         # Loads YAML from k_file
         k_file = os.path.join(openBF_dir, yaml_file)
@@ -987,8 +987,8 @@ class OPENBF_Jacobian:
 
         parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
 
-        # Filters parameters with delta != 0
-        valid_parameters = [param for param in parameters if delta_dict[param] != 0]
+        # Filters parameters with delta != "NaN"
+        valid_parameters = [param for param in parameters if delta_dict[param] != "NaN"]
 
         # Loads the YAML file
         with open(base_yaml_path, "r", encoding="utf-8") as f:
@@ -1035,8 +1035,8 @@ class OPENBF_Jacobian:
 
         parameters = ["R1", "Cc"]
 
-        # Filters parameters with delta != 0
-        valid_parameters = [param for param in parameters if delta_dict[param] != 0]
+        # Filters parameters with delta != "NaN"
+        valid_parameters = [param for param in parameters if delta_dict[param] != "NaN"]
 
         # Loads the YAML file
         with open(base_yaml_path, "r", encoding="utf-8") as f:
@@ -1414,7 +1414,7 @@ class OPENBF_Jacobian:
                 "Cc": "Peripheral compliance (Cc) " + r'$[m^3.Pa^{-1}]$'       
                 }
 
-            valid_params = [p for p in all_parameters if delta_dict.get(p, 0) != 0]
+            valid_params = [p for p in all_parameters if delta_dict.get(p, 0) != "NaN"]
             param_data = {p: [] for p in valid_params}
 
             for folder in folders:
@@ -1519,7 +1519,7 @@ class OPENBF_Jacobian:
             "Cc": "Peripheral compliance (Cc) " + r'$[m^3.Pa^{-1}]$'       
             }
 
-        valid_params = [p for p in all_parameters if delta_dict.get(p, 0) != 0]
+        valid_params = [p for p in all_parameters if delta_dict.get(p, 0) != "NaN"]
         param_data = {p: [] for p in valid_params}
 
         for folder in folders:
@@ -2317,8 +2317,8 @@ class OPENBF_Jacobian:
 
         print(f"\n=== Starting iteration {knumber}, ID: {ID} ===\n")
 
-        # Filters parameters with delta != 0
-        valid_parameters = [param for param in delta_dict if delta_dict[param] != 0]
+        # Filters parameters with delta != "NaN"
+        valid_parameters = [param for param in delta_dict if delta_dict[param] != "NaN"]
         print (f"The valid parameters are: {valid_parameters}.")
 
         if knumber == 0:
@@ -2499,9 +2499,9 @@ class OPENBF_Jacobian:
 
     def search_opt(self, ID, vessel, beta_method, alpha, delta_dict, measured_vessels, knumber_max, tied_iteration=False):
 
-        # Filters parameters with delta != 0
+        # Filters parameters with delta != "NaN"
         parameters = ["h0", "L", "R0", "Rp", "Rd", "E", "R1", "R2", "Cc"]
-        valid_parameters = [param for param in parameters if delta_dict[param] != 0]
+        valid_parameters = [param for param in parameters if delta_dict[param] != "NaN"]
 
         # Starts chronometer
         start = time.time()
@@ -2575,7 +2575,7 @@ if __name__ == "__main__":
     updater.file_openBF(patient_yaml, "ym_openBF_patient_output")
 
     # Searches optimized parameters
-    #add_values = {"h0": 0.00001, "L": 0.01, "R0": 0.0001, "Rp": 0, "Rd": 0, "E": 0, "R1": 0, "R2": 0, "Cc": 0}
-    add_values = {"h0": 0, "L": 0, "R0": 0, "Rp": 0, "Rd": 0, "E": 0, "R1": 1e6, "R2": 0, "Cc": 1e-13}
+    #add_values = {"h0": 0.00001, "L": 0.01, "R0": 0.0001, "Rp": "NaN", "Rd": "NaN", "E": "NaN", "R1": "NaN", "R2": "NaN", "Cc": "NaN"}
+    add_values = {"h0": "NaN", "L": "NaN", "R0": "NaN", "Rp": "NaN", "Rd": "NaN", "E": "NaN", "R1": 1e6, "R2": "NaN", "Cc": 1e-13}
     measured_vessels = ["vessel2","vessel3"]
-    updater.search_opt(24, "NA", "Morozov", 0.3, add_values, measured_vessels, 20, tied_iteration=True)
+    updater.search_opt(23.1, "NA", "Morozov", 0.3, add_values, measured_vessels, 20, tied_iteration=True)
